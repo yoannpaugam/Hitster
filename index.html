@@ -96,6 +96,10 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 
 .ico{width:20px;height:20px;vertical-align:-4px;margin-right:4px}
 .ico.big{width:24px;height:24px;color:var(--gold)}
+.tokens{display:flex;flex-direction:column;align-items:flex-end;font-size:13px;color:var(--muted);line-height:1.35}
+.tokens .me{color:var(--gold);font-weight:800;font-size:15px}
+.gap.chal{border-color:var(--ko);border-style:solid;background:rgba(255,107,107,.18);color:#ffb3b3}
+.gap.sel.chal{background:var(--gold)}
 /* Curseur de période */
 .range{position:relative;height:44px;margin:4px 6px 0}
 .range .track{position:absolute;left:0;right:0;top:19px;height:6px;border-radius:6px;background:var(--line)}
@@ -139,7 +143,7 @@ body.withbar .screen{padding-bottom:100px}
   <div id="embed"></div>
   <div class="mask"><b>🎵 Musique mystère</b><span>Si rien ne joue, touche ▶ juste ici →</span></div>
 </div>
-<script src="songs.js?v=9"></script>
+<script src="songs.js?v=10"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -160,16 +164,16 @@ const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "
   .replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
-const EASY_SET = new Set(typeof FACILE !== "undefined" ? FACILE : []);
-if (!EASY_SET.size) setTimeout(() => toast("Liste des musiques pas à jour (songs.js) : le niveau Facile est vide."), 800);
-const SONG = SONGS.map((s, i) => ({ id: i, film: s[0], year: s[1], composer: s[2], track: s[3], orig: s[4] || s[0], sid: s[5] || "",
-  easy: EASY_SET.has(s[4] || s[0]) }));
+// [film, année, compositeur, morceau, titre original, niveau "F"/"M", id Spotify optionnel]
+const SONG = SONGS.map((s, i) => ({ id: i, film: s[0], year: s[1], composer: s[2], track: s[3], orig: s[4] || s[0],
+  level: s[5] === "F" ? "facile" : "moyen", sid: s[6] || "" }));
+if (!SONG.some(s => s.level === "facile")) setTimeout(() => toast("Liste des musiques pas à jour (songs.js) : recharge la page."), 800);
 const LEVELS = { facile: "Facile", moyen: "Moyen" };
 
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "9 (niveaux)";
+const APP_VERSION = "10 (votes)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -417,18 +421,18 @@ const save = () => LS.set("game", G);
 const cur = () => G.players[G.turn];
 
 const YEAR_MIN = Math.min(...SONG.map(s => s.year)), YEAR_MAX = Math.max(...SONG.map(s => s.year));
-const songsIn = (a, b, lvl = "moyen") => SONG.filter(s => s.year >= a && s.year <= b && (lvl !== "facile" || s.easy));
+const songsIn = (a, b, lvl = "moyen") => SONG.filter(s => s.year >= a && s.year <= b && s.level === lvl);
 const opt = () => ({ level: LS.get("level", "facile"), yMin: LS.get("yMin", YEAR_MIN), yMax: LS.get("yMax", YEAR_MAX) });
-function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moyen") {
+function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moyen", tokens = 3) {
   const deck = shuffle(songsIn(yMin, yMax, level).map(s => s.id));
-  const players = Array.from({ length: nTeams }, (_, i) => ({ name: "Équipe " + (i + 1), cards: [deck.pop()] }));
+  const players = Array.from({ length: nTeams }, (_, i) => ({ name: "Équipe " + (i + 1), cards: [deck.pop()], tokens }));
   G = { players, target, deck, yMin, yMax, level, turn: 0, card: null, phase: "ready", gap: null, result: null, winner: null };
   drawCard(); save();
 }
 function drawCard() {
   if (!G.deck.length) { G.deck = shuffle(songsIn(G.yMin || YEAR_MIN, G.yMax || YEAR_MAX, G.level || "moyen").map(s => s.id).filter(id => !G.players.some(p => p.cards.includes(id)))); }
   // phase : "ready" (pas encore écouté) → "listen" (musique lancée, choix de la case) → "revealed"
-  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null;
+  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chal = null; G.picking = false;
 }
 const sortedCards = p => p.cards.map(id => SONG[id]).sort((a, b) => a.year - b.year);
 
@@ -557,7 +561,7 @@ function viewOptions() {
     </div>
     <p class="muted">${lvl === "facile"
       ? "Facile : uniquement les films et thèmes les plus célèbres (Star Wars, Gladiator, Forrest Gump, Le Parrain, Jurassic Park, Dune…)."
-      : "Moyen : toute la liste, y compris des films moins connus et des compositeurs plus confidentiels."}</p>
+      : "Moyen : moins de blockbusters, et pour les grands films des morceaux moins évidents (ex. les funérailles de Padmé plutôt que le thème de Star Wars)."}</p>
     <label>Période</label>
     <div class="box" style="margin-top:0">
       <div class="yearsel"><span class="yy" id="yminv"></span><span class="muted" id="ycount"></span><span class="yy" id="ymaxv"></span></div>
@@ -612,6 +616,8 @@ function viewSetup() {
       <span id="optsumtxt"></span><br><span class="muted">Modifier ›</span></button>
     <label>Cartes à atteindre pour gagner</label>
     <select id="target">${[5, 8, 10, 12, 15].map(v => `<option ${v === LS.get("target", 10) ? "selected" : ""}>${v}</option>`).join("")}</select>
+    <label>Jetons de vote par équipe</label>
+    <select id="tokens">${[0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${v === LS.get("tokens", 3) ? "selected" : ""}>${v ? v + " 🪙" : "Sans votes"}</option>`).join("")}</select>
     <div class="box muted">
       <b style="color:var(--text)">Déroulé</b><br>
       • Chaque équipe démarre avec une carte révélée sur sa frise.<br>
@@ -619,6 +625,9 @@ function viewSetup() {
       • Elle touche la case entre deux années où elle pense que le film se place.<br>
       • <b>Valider</b> révèle le film, le morceau, le compositeur et l'année.<br>
       • Bonne case : la carte rejoint sa frise. Sinon, elle est défaussée.<br>
+      • <b>Vote</b> : avant de valider, une équipe adverse peut miser 1 🪙 sur une autre case.<br>
+      &nbsp;&nbsp;– Si elle se trompe, son jeton passe à l'équipe qui joue.<br>
+      &nbsp;&nbsp;– Si elle a raison et l'équipe qui joue a tort, elle gagne la carte (et dépense son jeton).<br>
       • On passe à l'équipe suivante. La première à atteindre l'objectif gagne.
     </div>
     <button class="btn" id="start">Lancer le jeu</button>
@@ -632,11 +641,11 @@ function bindSetup() {
   if (n < +$("#teams").value + 5) { $("#start").disabled = true; $("#optsumtxt").innerHTML += `<br><span style="color:var(--ko)">Pas assez de musiques : élargis les options.</span>`; }
   $("#teams").onchange = () => render();
   $("#start").onclick = () => {
-    const teams = +$("#teams").value, target = +$("#target").value, { yMin, yMax, level } = opt();
-    LS.set("teams", teams); LS.set("target", target);
+    const teams = +$("#teams").value, target = +$("#target").value, tokens = +$("#tokens").value, { yMin, yMax, level } = opt();
+    LS.set("teams", teams); LS.set("target", target); LS.set("tokens", tokens);
     if (!isLogged()) toast("Pense à te connecter à Spotify pour entendre la musique.");
     statusMsg = "";
-    newGame(teams, target, yMin, yMax, level); go("game");
+    newGame(teams, target, yMin, yMax, level, tokens); go("game");
   };
 }
 
@@ -665,30 +674,46 @@ function viewGame() {
       <div class="ctrl"><button id="replay">↺ Réécouter</button><button id="pause">⏸ Pause</button>${playMode() === "embed" ? "" : `<button id="devbtn">🔊 Appareil</button>`}</div></div>`;
   } else {
     const ok = G.result.ok;
+    const lines = (G.result.lines || [ok ? "✓ Bonne période ! Carte gagnée" : "✗ Raté — " + G.result.hint])
+      .map(l => `<div class="verdict ${l.startsWith("✓") ? "ok" : l.startsWith("✗") ? "ko" : ""}">${esc(l)}</div>`).join("");
     mystery = `<div class="mystery reveal ${ok ? "ok" : "ko"}">
       <div class="year">${s.year}</div>
       <div class="film">${esc(s.film)}</div>
       <div class="track">« ${esc(s.track)} »</div>
       <div class="comp">${esc(s.composer)}</div>
-      <div class="verdict ${ok ? "ok" : "ko"}">${ok ? "✓ Bonne période ! Carte gagnée" : "✗ Raté — " + esc(G.result.hint)}</div></div>`;
+      ${lines}</div>`;
   }
   let tl = "";
   for (let i = 0; i <= cards.length; i++) {
-    if (!rev) tl += `<button class="gap ${G.gap === i ? "sel" : ""}" data-g="${i}" ${ph === "ready" ? "disabled" : ""}>${gapLabel(cards, i)}</button>`;
+    if (!rev) {
+      const isChal = G.chal && G.chal.gap === i;
+      tl += `<button class="gap ${G.gap === i ? "sel" : ""} ${isChal ? "chal" : ""}" data-g="${i}" ${ph === "ready" ? "disabled" : ""}>${
+        G.gap === i ? "🎧 " : isChal ? "⚔️ " + esc(G.players[G.chal.team].name) + " · " : ""}${gapLabel(cards, i)}</button>`;
+    }
     if (i < cards.length) {
       const c = cards[i];
       tl += `<div class="tcard ${rev && G.result.ok && c.id === G.card ? "new" : ""}" style="${rev ? "margin-top:8px" : ""}"><div class="y">${c.year}</div>
         <div class="t"><b>${esc(c.film)}</b><span>${esc(c.composer)}</span></div></div>`;
     }
   }
-  const actions = rev
-    ? `<button class="btn" id="next">Passer à ${esc(G.players[(G.turn + 1) % G.players.length].name)} →</button>`
-    : `<button class="btn" id="validate" ${G.gap == null || ph === "ready" ? "disabled" : ""}>Valider et voir la réponse</button>`;
-  const hint = ph === "ready" ? "" : ph === "listen" ? (G.gap == null ? "Touche la case de la bonne période" : "Choix : <b>" + gapLabel(cards, G.gap) + "</b>") : "";
+  const canChal = ph === "listen" && G.gap != null && !G.chal && G.players.some((pl, i) => i !== G.turn && (pl.tokens || 0) > 0);
+  let actions;
+  if (rev) actions = `<button class="btn" id="next">Passer à ${esc(G.players[(G.turn + 1) % G.players.length].name)} →</button>`;
+  else if (G.picking) actions = `<button class="btn sec" id="chalcancel">Annuler le vote</button>`;
+  else actions = `<div class="row">
+      ${canChal ? `<button class="btn sec" id="chal" style="flex:0 0 38%">⚔️ Voter</button>` : ""}
+      ${G.chal ? `<button class="btn sec" id="chalcancel" style="flex:0 0 38%">✕ Annuler le vote</button>` : ""}
+      <button class="btn" id="validate" ${G.gap == null || ph === "ready" ? "disabled" : ""}>Valider</button></div>`;
+  let hint = "";
+  if (G.picking) hint = `<b>${esc(G.players[G.chal.team].name)}</b> : touche la case où tu crois que va le film`;
+  else if (ph === "listen") hint = G.gap == null ? "Touche la case de la bonne période"
+    : "Choix : <b>" + gapLabel(cards, G.gap) + "</b>" + (G.chal ? ` · ⚔️ ${esc(G.players[G.chal.team].name)} : <b>${gapLabel(cards, G.chal.gap)}</b>` : "");
   return `<div class="screen">
     <div class="top"><div><span class="teambadge">${esc(p.name)}</span>
       <div class="stats" style="margin-top:6px">${p.cards.length}/${G.target} cartes</div></div>
-      <button class="iconbtn" id="menu" aria-label="Menu">☰</button></div>
+      <div class="row" style="gap:8px"><div class="tokens" id="tokbox" title="Jetons">${G.players.map((pl, i) =>
+        `<span class="${i === G.turn ? "me" : ""}">${esc(pl.name.replace("Équipe ", "É"))} ${pl.tokens || 0}🪙</span>`).join("")}</div>
+      <button class="iconbtn" id="menu" aria-label="Menu">☰</button></div></div>
     ${mystery}
     <div class="status" id="status">${esc(statusMsg)}</div>
     <div class="hint">${hint}</div>
@@ -714,8 +739,20 @@ function bindGame() {
     $("#replay").onclick = playCurrent;
     $("#pause").onclick = () => { pause(); setStatus("En pause"); };
     $("#devbtn") && ($("#devbtn").onclick = chooseDevice);
-    tl.querySelectorAll(".gap").forEach(g => g.onclick = () => { G.gap = +g.dataset.g; save(); render(); });
-    $("#validate").onclick = validate;
+    tl.querySelectorAll(".gap").forEach(g => g.onclick = () => {
+      const i = +g.dataset.g;
+      if (G.picking) {
+        if (i === G.gap) { toast("Choisis une case différente de celle de " + cur().name + "."); return; }
+        G.chal.gap = i; G.picking = false;
+      } else {
+        G.gap = i;
+        if (G.chal && G.chal.gap === i) { G.chal.gap = null; G.picking = true; }
+      }
+      save(); render();
+    });
+    $("#validate") && ($("#validate").onclick = validate);
+    $("#chal") && ($("#chal").onclick = startChallenge);
+    $("#chalcancel") && ($("#chalcancel").onclick = () => { G.chal = null; G.picking = false; save(); render(); });
   } else {
     $("#next").onclick = nextTurn;
   }
@@ -806,24 +843,46 @@ async function openFallback() {
   location.href = "https://open.spotify.com/track/" + uri.split(":").pop();
 }
 
+function startChallenge() {
+  const others = G.players.map((pl, i) => ({ pl, i })).filter(x => x.i !== G.turn && (x.pl.tokens || 0) > 0);
+  if (!others.length) return;
+  const go2 = i => { closeSheet(); G.chal = { team: i, gap: null }; G.picking = true; save(); render(); };
+  if (others.length === 1) return go2(others[0].i);
+  sheet(`<h2>Quelle équipe vote ?</h2>${others.map(x => `<button class="btn sec" data-t="${x.i}">⚔️ ${esc(x.pl.name)} · ${x.pl.tokens} 🪙</button>`).join("")}
+    <button class="btn ghost" id="t_close">Annuler</button>`, { t_close: closeSheet });
+  document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => go2(+b.dataset.t));
+}
+const gapOk = (cards, i, y) => (!cards[i - 1] || cards[i - 1].year <= y) && (!cards[i] || y <= cards[i].year);
 function validate() {
   const p = cur(), cards = sortedCards(p), s = SONG[G.card], i = G.gap;
-  const prev = cards[i - 1], next = cards[i];
-  const ok = (!prev || prev.year <= s.year) && (!next || s.year <= next.year);
+  if (G.picking || (G.chal && G.chal.gap == null)) { toast("Termine le vote ou annule-le."); return; }
+  const ok = gapOk(cards, i, s.year);
   let hint = "";
   if (!ok) {
     const j = cards.findIndex(c => c.year > s.year);
     const a = j === -1 ? cards[cards.length - 1] : cards[j - 1], b = j === -1 ? null : cards[j];
     hint = !a ? `il fallait la placer avant ${b.year}` : !b ? `il fallait la placer après ${a.year}` : `il fallait la placer entre ${a.year} et ${b.year}`;
   }
+  const lines = [ok ? `✓ ${p.name} a raison : carte gagnée !` : `✗ ${p.name} s'est trompée — ${hint}`];
   if (ok) p.cards.push(s.id);
-  G.phase = "revealed"; G.result = { ok, hint };
+  if (G.chal) {
+    const c = G.players[G.chal.team], cOk = gapOk(cards, G.chal.gap, s.year);
+    if (!ok && cOk) {
+      c.cards.push(s.id); c.tokens = Math.max(0, (c.tokens || 0) - 1);
+      lines.push(`✓ ${c.name} avait raison : elle remporte la carte (et utilise son jeton).`);
+    } else {
+      c.tokens = Math.max(0, (c.tokens || 0) - 1); p.tokens = (p.tokens || 0) + 1;
+      lines.push(`✗ Le vote de ${c.name} était faux : son jeton passe à ${p.name} 🪙`);
+    }
+  }
+  G.phase = "revealed"; G.result = { ok, hint, lines };
   save(); render();
   if (navigator.vibrate) navigator.vibrate(ok ? 60 : [40, 60, 40]);
 }
 function nextTurn() {
-  const p = cur();
-  if (p.cards.length >= G.target) { G.winner = G.turn; save(); pause(); go("win"); return; }
+  const order = [G.turn, ...G.players.map((_, i) => i).filter(i => i !== G.turn)];
+  const w = order.find(i => G.players[i].cards.length >= G.target);
+  if (w != null) { G.winner = w; save(); pause(); go("win"); return; }
   G.turn = (G.turn + 1) % G.players.length;
   pause();
   drawCard(); save(); statusMsg = ""; tlScroll = 0; render();
@@ -842,7 +901,7 @@ function sheet(html, handlers = {}) {
 function closeSheet() { const o = $("#ov"); if (o) o.remove(); }
 function openMenu() {
   const rows = G.players.map((pl, i) => `<div class="score"><span>${i === G.turn ? "🎧 " : ""}<b>${esc(pl.name)}</b></span>
-    <span>${pl.cards.length}/${G.target} cartes</span></div>`).join("");
+    <span>${pl.cards.length}/${G.target} cartes · ${pl.tokens || 0} 🪙</span></div>`).join("");
   sheet(`<h2>Scores</h2>${rows}
     <p class="muted">Niveau ${LEVELS[G.level || "moyen"]} · Période : ${G.yMin || YEAR_MIN} – ${G.yMax || YEAR_MAX} · ${G.deck.length} musiques restantes dans la pioche.</p>
     <button class="btn" id="m_close">Reprendre</button>
