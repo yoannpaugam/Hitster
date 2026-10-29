@@ -94,6 +94,20 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 .hint{font-size:13px;color:var(--muted);text-align:center;margin:8px 0 2px;min-height:18px}
 .hint b{color:var(--gold)}
 
+/* Curseur de période */
+.range{position:relative;height:44px;margin:4px 6px 0}
+.range .track{position:absolute;left:0;right:0;top:19px;height:6px;border-radius:6px;background:var(--line)}
+.range .fill{position:absolute;top:19px;height:6px;border-radius:6px;background:var(--gold)}
+.range input{position:absolute;left:0;top:0;width:100%;height:44px;margin:0;padding:0;background:none;border:0;
+  -webkit-appearance:none;appearance:none;pointer-events:none}
+.range input::-webkit-slider-thumb{-webkit-appearance:none;pointer-events:auto;width:30px;height:30px;border-radius:50%;
+  background:var(--gold);border:3px solid #1a1206;cursor:pointer}
+.range input::-moz-range-thumb{pointer-events:auto;width:26px;height:26px;border-radius:50%;background:var(--gold);border:3px solid #1a1206}
+.range input::-webkit-slider-runnable-track{background:none}
+.yearsel{display:flex;justify-content:space-between;align-items:baseline;margin-top:6px}
+.yearsel .yy{font-family:Georgia,serif;font-size:26px;font-weight:700;color:var(--gold2)}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.presets button{padding:8px 12px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--text);font-size:14px}
 /* Lecteur intégré */
 #playerbar{position:fixed;left:12px;right:12px;bottom:calc(8px + env(safe-area-inset-bottom));height:80px;border-radius:12px;
   overflow:hidden;z-index:15;background:#000;border:1px solid var(--gold)}
@@ -144,12 +158,15 @@ const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "
   .replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
-const SONG = SONGS.map((s, i) => ({ id: i, film: s[0], year: s[1], composer: s[2], track: s[3], orig: s[4] || s[0], sid: s[5] || "" }));
+const EASY_SET = new Set(typeof FACILE !== "undefined" ? FACILE : []);
+const SONG = SONGS.map((s, i) => ({ id: i, film: s[0], year: s[1], composer: s[2], track: s[3], orig: s[4] || s[0], sid: s[5] || "",
+  easy: EASY_SET.has(s[4] || s[0]) }));
+const LEVELS = { facile: "Facile", moyen: "Moyen" };
 
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "6 (lecteur intégré)";
+const APP_VERSION = "8 (niveaux)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -396,14 +413,17 @@ let G = LS.get("game", null);
 const save = () => LS.set("game", G);
 const cur = () => G.players[G.turn];
 
-function newGame(nTeams, target) {
-  const deck = shuffle(SONG.map(s => s.id));
+const YEAR_MIN = Math.min(...SONG.map(s => s.year)), YEAR_MAX = Math.max(...SONG.map(s => s.year));
+const songsIn = (a, b, lvl = "moyen") => SONG.filter(s => s.year >= a && s.year <= b && (lvl !== "facile" || s.easy));
+const opt = () => ({ level: LS.get("level", "facile"), yMin: LS.get("yMin", YEAR_MIN), yMax: LS.get("yMax", YEAR_MAX) });
+function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moyen") {
+  const deck = shuffle(songsIn(yMin, yMax, level).map(s => s.id));
   const players = Array.from({ length: nTeams }, (_, i) => ({ name: "Équipe " + (i + 1), cards: [deck.pop()] }));
-  G = { players, target, deck, turn: 0, card: null, phase: "ready", gap: null, result: null, winner: null };
+  G = { players, target, deck, yMin, yMax, level, turn: 0, card: null, phase: "ready", gap: null, result: null, winner: null };
   drawCard(); save();
 }
 function drawCard() {
-  if (!G.deck.length) { G.deck = shuffle(SONG.map(s => s.id).filter(id => !G.players.some(p => p.cards.includes(id)))); }
+  if (!G.deck.length) { G.deck = shuffle(songsIn(G.yMin || YEAR_MIN, G.yMax || YEAR_MAX, G.level || "moyen").map(s => s.id).filter(id => !G.players.some(p => p.cards.includes(id)))); }
   // phase : "ready" (pas encore écouté) → "listen" (musique lancée, choix de la case) → "revealed"
   G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null;
 }
@@ -415,8 +435,8 @@ function go(s) { screen = s; render(); }
 function render() {
   const app = $("#app");
   if (screen === "game" && G && G.winner != null) screen = "win";
-  app.innerHTML = ({ home: viewHome, settings: viewSettings, setup: viewSetup, game: viewGame, win: viewWin })[screen]();
-  ({ home: bindHome, settings: bindSettings, setup: bindSetup, game: bindGame, win: bindWin })[screen]();
+  app.innerHTML = ({ home: viewHome, settings: viewSettings, options: viewOptions, setup: viewSetup, game: viewGame, win: viewWin })[screen]();
+  ({ home: bindHome, settings: bindSettings, options: bindOptions, setup: bindSetup, game: bindGame, win: bindWin })[screen]();
   showBar(playMode() === "embed" && screen === "game" && G && G.phase !== "ready" && !!EmbedCtl);
 }
 
@@ -431,6 +451,7 @@ function viewHome() {
       ${isLogged() ? "" : `<button class="btn" id="login">Se connecter à Spotify</button>`}
       ${G && G.winner == null ? `<button class="btn ${isLogged() ? "" : "sec"}" id="resume">Reprendre la partie</button>` : ""}
       <button class="btn ${isLogged() && !(G && G.winner == null) ? "" : "sec"}" id="new">Nouvelle partie</button>
+      <button class="btn sec" id="options">🎚️ Options de partie<br><span style="font-weight:500;font-size:13px" class="muted">Niveau ${LEVELS[opt().level]} · ${opt().yMin}–${opt().yMax}</span></button>
       <button class="btn ghost" id="settings">⚙️ Réglages</button>
     </div></div>`;
 }
@@ -439,6 +460,7 @@ function bindHome() {
   $("#resume") && ($("#resume").onclick = () => go("game"));
   $("#new").onclick = () => go("setup");
   $("#settings").onclick = () => go("settings");
+  $("#options").onclick = () => { optBack = "home"; go("options"); };
 }
 
 /* ---------- Réglages ---------- */
@@ -516,12 +538,74 @@ function bindSettings() {
   };
 }
 
+
+/* ---------- Options de partie ---------- */
+let optBack = "home";
+function viewOptions() {
+  const lvl = opt().level;
+  const cnt = l => songsIn(YEAR_MIN, YEAR_MAX, l).length;
+  return `<div class="screen scroll">
+    <div class="top"><h2>Options de partie</h2><button class="iconbtn" id="back">✕</button></div>
+    <label>Niveau</label>
+    <div class="row">
+      <button class="btn ${lvl === "facile" ? "" : "sec"}" data-lvl="facile">😀 Facile<br><span style="font-weight:500;font-size:13px">${cnt("facile")} musiques</span></button>
+      <button class="btn ${lvl === "moyen" ? "" : "sec"}" data-lvl="moyen">🤔 Moyen<br><span style="font-weight:500;font-size:13px">${cnt("moyen")} musiques</span></button>
+    </div>
+    <p class="muted">${lvl === "facile"
+      ? "Facile : uniquement les films et thèmes les plus célèbres (Star Wars, Gladiator, Forrest Gump, Le Parrain, Jurassic Park, Dune…)."
+      : "Moyen : toute la liste, y compris des films moins connus et des compositeurs plus confidentiels."}</p>
+    <label>Période</label>
+    <div class="box" style="margin-top:0">
+      <div class="yearsel"><span class="yy" id="yminv"></span><span class="muted" id="ycount"></span><span class="yy" id="ymaxv"></span></div>
+      <div class="range"><div class="track"></div><div class="fill" id="yfill"></div>
+        <input type="range" id="ymin" min="${YEAR_MIN}" max="${YEAR_MAX}" step="1" value="${opt().yMin}" aria-label="Année de début">
+        <input type="range" id="ymax" min="${YEAR_MIN}" max="${YEAR_MAX}" step="1" value="${opt().yMax}" aria-label="Année de fin"></div>
+      <div class="presets">
+        <button data-p="${YEAR_MIN}-${YEAR_MAX}">Tout</button>
+        <button data-p="${YEAR_MIN}-1979">Classiques (avant 1980)</button>
+        <button data-p="1980-1999">80-90</button>
+        <button data-p="2000-${YEAR_MAX}">Depuis 2000</button>
+      </div>
+    </div>
+    <button class="btn" id="ok">Valider</button>
+  </div>`;
+}
+function bindOptions() {
+  const lvl = opt().level;
+  $("#back").onclick = () => go(optBack);
+  $("#ok").onclick = () => go(optBack);
+  document.querySelectorAll("[data-lvl]").forEach(btn => btn.onclick = () => { LS.set("level", btn.dataset.lvl); render(); });
+  const a = $("#ymin"), b = $("#ymax");
+  const upd = moved => {
+    let lo = +a.value, hi = +b.value;
+    if (lo > hi) { if (moved === a) { b.value = lo; hi = lo; } else { a.value = hi; lo = hi; } }
+    const span = YEAR_MAX - YEAR_MIN;
+    $("#yfill").style.left = ((lo - YEAR_MIN) / span * 100) + "%";
+    $("#yfill").style.right = ((YEAR_MAX - hi) / span * 100) + "%";
+    $("#yminv").textContent = lo; $("#ymaxv").textContent = hi;
+    const n = songsIn(lo, hi, lvl).length, need = LS.get("teams", 2) + 5;
+    $("#ycount").textContent = n + " musique" + (n > 1 ? "s" : "");
+    $("#ycount").style.color = n < need ? "var(--ko)" : "";
+    LS.set("yMin", lo); LS.set("yMax", hi);
+    // la poignée de gauche passe au-dessus quand elles se touchent à droite
+    a.style.zIndex = lo > YEAR_MAX - 5 ? 3 : 1;
+  };
+  a.oninput = () => upd(a); b.oninput = () => upd(b);
+  document.querySelectorAll("[data-p]").forEach(btn => btn.onclick = () => {
+    const [lo, hi] = btn.dataset.p.split("-").map(Number); a.value = lo; b.value = hi; upd();
+  });
+  upd();
+}
+
 /* ---------- Préparation de partie ---------- */
 function viewSetup() {
   return `<div class="screen scroll">
     <div class="top"><h2>Nouvelle partie</h2><button class="iconbtn" id="back">✕</button></div>
     <label>Nombre d'équipes</label>
-    <select id="teams">${[1, 2, 3, 4, 5, 6, 7, 8].map(v => `<option value="${v}" ${v === LS.get("teams", 2) ? "selected" : ""}>${v} équipe${v > 1 ? "s" : ""}</option>`).join("")}</select>
+    <select id="teams">${[1, 2, 3, 4, 5, 6, 7, 8].map(v => `<option value="${v}" ${v === (+($("#teams") && $("#teams").value) || LS.get("teams", 2)) ? "selected" : ""}>${v} équipe${v > 1 ? "s" : ""}</option>`).join("")}</select>
+    <label>Options de partie</label>
+    <button class="box" id="optsum" style="width:100%;text-align:left;color:var(--text);font-size:15px;margin-top:0">
+      <span id="optsumtxt"></span><br><span class="muted">Modifier ›</span></button>
     <label>Cartes à atteindre pour gagner</label>
     <select id="target">${[5, 8, 10, 12, 15].map(v => `<option ${v === LS.get("target", 10) ? "selected" : ""}>${v}</option>`).join("")}</select>
     <div class="box muted">
@@ -538,12 +622,17 @@ function viewSetup() {
 }
 function bindSetup() {
   $("#back").onclick = () => go("home");
+  const o = opt(), n = songsIn(o.yMin, o.yMax, o.level).length;
+  $("#optsumtxt").innerHTML = `Niveau <b>${LEVELS[o.level]}</b> · ${o.yMin}–${o.yMax} · <b>${n}</b> musiques`;
+  $("#optsum").onclick = () => { optBack = "setup"; go("options"); };
+  if (n < +$("#teams").value + 5) { $("#start").disabled = true; $("#optsumtxt").innerHTML += `<br><span style="color:var(--ko)">Pas assez de musiques : élargis les options.</span>`; }
+  $("#teams").onchange = () => render();
   $("#start").onclick = () => {
-    const teams = +$("#teams").value, target = +$("#target").value;
+    const teams = +$("#teams").value, target = +$("#target").value, { yMin, yMax, level } = opt();
     LS.set("teams", teams); LS.set("target", target);
     if (!isLogged()) toast("Pense à te connecter à Spotify pour entendre la musique.");
     statusMsg = "";
-    newGame(teams, target); go("game");
+    newGame(teams, target, yMin, yMax, level); go("game");
   };
 }
 
@@ -751,7 +840,7 @@ function openMenu() {
   const rows = G.players.map((pl, i) => `<div class="score"><span>${i === G.turn ? "🎧 " : ""}<b>${esc(pl.name)}</b></span>
     <span>${pl.cards.length}/${G.target} cartes</span></div>`).join("");
   sheet(`<h2>Scores</h2>${rows}
-    <p class="muted">${G.deck.length} musiques restantes dans la pioche.</p>
+    <p class="muted">Niveau ${LEVELS[G.level || "moyen"]} · Période : ${G.yMin || YEAR_MIN} – ${G.yMax || YEAR_MAX} · ${G.deck.length} musiques restantes dans la pioche.</p>
     <button class="btn" id="m_close">Reprendre</button>
     <button class="btn sec" id="m_set">⚙️ Réglages</button>
     <button class="btn ghost" id="m_quit">Abandonner la partie</button>`, {
