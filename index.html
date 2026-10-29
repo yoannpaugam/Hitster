@@ -137,7 +137,7 @@ const SONG = SONGS.map((s, i) => ({ id: i, film: s[0], year: s[1], composer: s[2
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "4 (appareil)";
+const APP_VERSION = "5 (vérif. lecture)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -240,7 +240,10 @@ async function listDevices() {
   if (!r.ok) return [];
   return (await r.json()).devices || [];
 }
-let lastPlayError = "", lastDevice = "";
+let lastPlayError = "", lastDevice = "", lastPlayState = "";
+async function getPlayback() {
+  try { const r = await api("/me/player"); if (r.status !== 200) return null; return await r.json(); } catch { return null; }
+}
 async function playUri(uri) {
   const body = JSON.stringify({ uris: [uri], position_ms: (LS.get("startAt", 0) || 0) * 1000 });
   const tryPlay = async id => {
@@ -265,7 +268,24 @@ async function playUri(uri) {
   }
   let r = await tryPlay(dev.id);
   if (!r.ok && r.status !== 403) { await sleep(1200); r = await tryPlay(dev.id); }
-  if (r.ok) { lastDevice = dev.name + (dev.type ? " (" + dev.type + ")" : ""); return "ok"; }
+  if (r.ok) {
+    lastDevice = dev.name + (dev.type ? " (" + dev.type + ")" : "");
+    // Vérifie que Spotify joue vraiment ; sinon relance la lecture
+    for (let k = 0; k < 3; k++) {
+      await sleep(1500);
+      const st = await getPlayback();
+      if (st && st.is_playing && st.item && st.item.uri === uri) return "ok";
+      if (st && st.item && st.item.uri === uri && !st.is_playing) {
+        await api("/me/player/play?device_id=" + encodeURIComponent(dev.id), { method: "PUT" });
+      } else {
+        await tryPlay(dev.id);
+      }
+    }
+    const st = await getPlayback();
+    if (st && st.is_playing && st.item && st.item.uri === uri) return "ok";
+    lastPlayState = !st ? "aucun état" : !st.item ? "rien de chargé" : st.item.uri !== uri ? "un autre titre est chargé" : "titre chargé mais en pause";
+    return "silent";
+  }
   return r.status === 403 ? "premium" : "nodevice";
 }
 async function pause() { try { await api("/me/player/pause", { method: "PUT" }); } catch {} }
@@ -561,7 +581,8 @@ async function playCurrent() {
     if (G.card !== s.id) return;
     if (!uri) { setStatus("Morceau introuvable sur Spotify — on en tire un autre."); offerFreeSkip(); return; }
     const res = await playUri(uri);
-    if (res === "ok") setStatus("♪ Lecture sur : " + lastDevice);
+    if (res === "ok") setStatus("♪ Lecture confirmée sur : " + lastDevice);
+    else if (res === "silent") { setStatus("Spotify a reçu le morceau mais ne joue pas (" + lastPlayState + ")."); silentHelp(); }
     else if (res === "premium") setStatus("Spotify refuse la lecture (Premium requis).");
     else { setStatus("Aucun appareil Spotify actif."); noDeviceHelp(); }
   } catch (e) {
@@ -591,6 +612,17 @@ async function noDeviceHelp() {
   document.querySelectorAll("[data-dev]").forEach(b => b.onclick = () => {
     LS.set("device", b.dataset.dev); LS.set("deviceName", b.dataset.name); closeSheet(); playCurrent();
   });
+}
+
+function silentHelp() {
+  sheet(`<h2>Spotify ne démarre pas</h2>
+    <p>Le morceau a été envoyé à <b>${esc(lastDevice)}</b>, mais Spotify ne le joue pas en arrière-plan (${esc(lastPlayState)}).</p>
+    <p class="muted">Solution rapide : ouvre Spotify en <b>fenêtre contextuelle</b> (bouton ||| en bas → icône de Spotify → « Ouvrir en fenêtre contextuelle »), réduis-la dans un coin, puis appuie sur « Réessayer ».</p>
+    <a class="btn sec" href="spotify:" style="text-align:center;text-decoration:none">Ouvrir Spotify</a>
+    <button class="btn" id="x_retry">Réessayer</button>
+    <button class="btn sec" id="x_dev">🔊 Choisir un autre appareil</button>
+    <button class="btn ghost" id="x_fb">Mode secours : ouvrir la musique dans Spotify</button>`,
+    { x_retry: () => { closeSheet(); playCurrent(); }, x_dev: () => { closeSheet(); chooseDevice(); }, x_fb: openFallback });
 }
 
 async function chooseDevice() {
