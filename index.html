@@ -310,8 +310,8 @@ const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Dif
 
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
-const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "28 (Kids en VF)";
+const SCOPES = "user-read-playback-state user-modify-playback-state playlist-modify-private playlist-modify-public";
+const APP_VERSION = "29 (playlists)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -353,7 +353,7 @@ async function handleRedirect() {
 }
 function saveToken(j) {
   const old = LS.get("tok", {}) || {};
-  LS.set("tok", { access: j.access_token, refresh: j.refresh_token || old.refresh, exp: Date.now() + (j.expires_in - 60) * 1000 });
+  LS.set("tok", { access: j.access_token, refresh: j.refresh_token || old.refresh, exp: Date.now() + (j.expires_in - 60) * 1000, scope: j.scope || old.scope || "" });
 }
 async function getToken() {
   const t = LS.get("tok", null); if (!t) return null;
@@ -679,7 +679,6 @@ function viewHome() {
     <div class="hero">
       <div class="reel">🎬</div>
       <h1>Ciné<span>Hits</span></h1>
-      <div class="muted" style="font-size:12px">Version ${APP_VERSION}</div>
       <p class="muted">Écoute la musique, place le film au bon endroit sur ta frise. ${SONG.length} compositions de films.</p>
       <div style="margin:10px 0 18px"><span class="pill"><span class="dot ${isLogged() || allReady() ? "on" : ""}"></span>${
         allReady() ? "Prêt à jouer · aucune connexion nécessaire" : isLogged() ? "Spotify connecté" : "Spotify non connecté"}</span></div>
@@ -752,6 +751,12 @@ function viewSettings() {
       <div class="muted" id="exportstat"></div>
       <button class="btn" id="export">⬇️ Exporter songs.js</button>
     </div>
+    <div class="box">
+      <b>Playlists Spotify</b>
+      <p class="muted">Crée sur ton compte Spotify une playlist privée par niveau (Kids, Facile, Moyen, Difficile) avec tous les morceaux du jeu. Relancer met les playlists à jour.</p>
+      <div class="muted" id="plout"></div>
+      <button class="btn" id="mkpl" ${isLogged() ? "" : "disabled"}>🎶 Créer les playlists</button>
+    </div>
     <button class="btn ghost" id="clearcache">Vider la mémoire des morceaux trouvés</button>
   </div>`;
 }
@@ -783,6 +788,7 @@ function bindSettings() {
   };
   $("#clearcache").onclick = () => { LS.del("ids2"); toast("Mémoire vidée."); };
   $("#export").onclick = exportSongs;
+  $("#mkpl").onclick = makePlaylists;
   $("#test").onclick = async () => {
     const out = $("#testout"), btn = $("#test"); btn.disabled = true; out.innerHTML = "";
     let ko = 0;
@@ -1658,6 +1664,56 @@ async function openFallback() {
   location.href = "https://open.spotify.com/track/" + uri.split(":").pop();
 }
 
+async function makePlaylists() {
+  const tok = LS.get("tok", null) || {};
+  if (!/playlist-modify/.test(tok.scope || "")) {
+    if (confirm("Spotify doit t'autoriser à créer des playlists. Te reconnecter maintenant ?")) login();
+    return;
+  }
+  const out = $("#plout"), btn = $("#mkpl"); btn.disabled = true;
+  const say = m => { if (out) out.innerHTML = m; };
+  const saved = LS.get("playlists", {}) || {};
+  const levels = ["kids", "facile", "moyen", "difficile"];
+  const done = [];
+  try {
+    for (const lvl of levels) {
+      const songs = songsIn(YEAR_MIN, YEAR_MAX, lvl).slice().sort((a, b) => a.year - b.year);
+      const uris = []; let miss = 0;
+      for (let i = 0; i < songs.length; i++) {
+        say(`${LEVELS[lvl]} : recherche des morceaux ${i + 1}/${songs.length}…`);
+        const had = !!knownUri(songs[i]);
+        let u = null; try { u = await resolveSong(songs[i]); } catch (e) { if (e instanceof AuthError) throw e; }
+        if (u && !uris.includes(u)) uris.push(u); else if (!u) miss++;
+        if (!had) await sleep(80);
+      }
+      say(`${LEVELS[lvl]} : création de la playlist…`);
+      const name = "CinéHits · " + LEVELS[lvl];
+      let id = saved[lvl], first = uris.slice(0, 100);
+      if (id) {
+        const r = await api(`/playlists/${id}/items`, { method: "PUT", body: JSON.stringify({ uris: first }) });
+        if (!r.ok) id = null;
+      }
+      if (!id) {
+        const r = await api("/me/playlists", { method: "POST", body: JSON.stringify({ name, public: false,
+          description: `Toutes les musiques du niveau ${LEVELS[lvl]} du jeu CinéHits.` }) });
+        if (!r.ok) throw new Error("Création refusée par Spotify (" + r.status + ")");
+        id = (await r.json()).id; saved[lvl] = id; LS.set("playlists", saved);
+        const r2 = await api(`/playlists/${id}/items`, { method: "POST", body: JSON.stringify({ uris: first }) });
+        if (!r2.ok) throw new Error("Ajout refusé par Spotify (" + r2.status + ")");
+      }
+      for (let k = 100; k < uris.length; k += 100) {
+        const r = await api(`/playlists/${id}/items`, { method: "POST", body: JSON.stringify({ uris: uris.slice(k, k + 100) }) });
+        if (!r.ok) throw new Error("Ajout refusé par Spotify (" + r.status + ")");
+      }
+      done.push(`✅ <a href="https://open.spotify.com/playlist/${id}" target="_blank" style="color:var(--gold)">${esc(name)}</a> · ${uris.length} morceaux${miss ? ` (${miss} introuvable${miss > 1 ? "s" : ""})` : ""}`);
+      say(done.join("<br>"));
+    }
+    toast("Playlists créées sur ton Spotify 🎶");
+  } catch (e) {
+    say(done.join("<br>") + `<br>❌ ${esc(e instanceof AuthError ? "Session Spotify expirée : reconnecte-toi." : e.message || "Erreur")}`);
+  }
+  btn.disabled = false;
+}
 function exportSongs() {
   const c = LS.get("ids2", {}) || {};
   let found = 0;
