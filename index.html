@@ -137,7 +137,7 @@ const SONG = SONGS.map((s, i) => ({ id: i, film: s[0], year: s[1], composer: s[2
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "3 (diagnostic)";
+const APP_VERSION = "4 (appareil)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -240,7 +240,7 @@ async function listDevices() {
   if (!r.ok) return [];
   return (await r.json()).devices || [];
 }
-let lastPlayError = "";
+let lastPlayError = "", lastDevice = "";
 async function playUri(uri) {
   const body = JSON.stringify({ uris: [uri], position_ms: (LS.get("startAt", 0) || 0) * 1000 });
   const tryPlay = async id => {
@@ -255,6 +255,7 @@ async function playUri(uri) {
   if (!dev) {
     // aucun appareil listé : on tente quand même sur l'appareil actif
     const r = await tryPlay("");
+    lastDevice = "appareil actif";
     return r.ok ? "ok" : (r.status === 403 ? "premium" : "nodevice");
   }
   if (!dev.is_active) {
@@ -264,7 +265,7 @@ async function playUri(uri) {
   }
   let r = await tryPlay(dev.id);
   if (!r.ok && r.status !== 403) { await sleep(1200); r = await tryPlay(dev.id); }
-  if (r.ok) { LS.set("lastDevice", dev.name); return "ok"; }
+  if (r.ok) { lastDevice = dev.name + (dev.type ? " (" + dev.type + ")" : ""); return "ok"; }
   return r.status === 403 ? "premium" : "nodevice";
 }
 async function pause() { try { await api("/me/player/pause", { method: "PUT" }); } catch {} }
@@ -493,7 +494,7 @@ function viewGame() {
       <div class="muted" style="margin-top:8px">Appuie sur lecture</div></div>`;
   } else if (ph === "listen") {
     mystery = `<div class="mystery"><div class="q">?</div>
-      <div class="ctrl"><button id="replay">↺ Réécouter</button><button id="pause">⏸ Pause</button></div></div>`;
+      <div class="ctrl"><button id="replay">↺ Réécouter</button><button id="pause">⏸ Pause</button><button id="devbtn">🔊 Appareil</button></div></div>`;
   } else {
     const ok = G.result.ok;
     mystery = `<div class="mystery reveal ${ok ? "ok" : "ko"}">
@@ -544,6 +545,7 @@ function bindGame() {
   } else if (ph === "listen") {
     $("#replay").onclick = playCurrent;
     $("#pause").onclick = () => { pause(); setStatus("En pause"); };
+    $("#devbtn").onclick = chooseDevice;
     tl.querySelectorAll(".gap").forEach(g => g.onclick = () => { G.gap = +g.dataset.g; save(); render(); });
     $("#validate").onclick = validate;
   } else {
@@ -559,7 +561,7 @@ async function playCurrent() {
     if (G.card !== s.id) return;
     if (!uri) { setStatus("Morceau introuvable sur Spotify — on en tire un autre."); offerFreeSkip(); return; }
     const res = await playUri(uri);
-    if (res === "ok") setStatus("♪ Lecture en cours");
+    if (res === "ok") setStatus("♪ Lecture sur : " + lastDevice);
     else if (res === "premium") setStatus("Spotify refuse la lecture (Premium requis).");
     else { setStatus("Aucun appareil Spotify actif."); noDeviceHelp(); }
   } catch (e) {
@@ -586,6 +588,23 @@ async function noDeviceHelp() {
     <button class="btn sec" id="s_diag">🩺 Diagnostic</button>
     <button class="btn ghost" id="s_fallback">Mode secours : ouvrir la musique dans Spotify</button>
     <p class="muted" style="font-size:12px">Détail technique : ${esc(lastPlayError || "aucun appareil")}</p>`, { s_retry: () => { closeSheet(); playCurrent(); }, s_diag: showDiagnostic, s_fallback: openFallback });
+  document.querySelectorAll("[data-dev]").forEach(b => b.onclick = () => {
+    LS.set("device", b.dataset.dev); LS.set("deviceName", b.dataset.name); closeSheet(); playCurrent();
+  });
+}
+
+async function chooseDevice() {
+  let devs = [];
+  try { devs = await listDevices(); } catch { toast("Connecte-toi à Spotify."); return; }
+  const pref = LS.get("device", "");
+  sheet(`<h2>Sur quel appareil jouer ?</h2>
+    ${devs.length ? devs.map(d => `<button class="btn ${d.id === pref ? "" : "sec"}" data-dev="${esc(d.id)}" data-name="${esc(d.name)}">🔊 ${esc(d.name)} <span style="opacity:.7">(${esc(d.type)}${d.is_active ? ", actif" : ""})</span></button>`).join("")
+      : `<p class="muted">Aucun appareil détecté. Ouvre Spotify sur ton téléphone, lance un titre, puis reviens.</p>`}
+    <button class="btn ghost" id="c_auto">Automatique</button>
+    <button class="btn ghost" id="c_close">Fermer</button>`, {
+    c_close: closeSheet,
+    c_auto: () => { LS.del("device"); LS.del("deviceName"); closeSheet(); playCurrent(); }
+  });
   document.querySelectorAll("[data-dev]").forEach(b => b.onclick = () => {
     LS.set("device", b.dataset.dev); LS.set("deviceName", b.dataset.name); closeSheet(); playCurrent();
   });
