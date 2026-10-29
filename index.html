@@ -94,6 +94,14 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 .hint{font-size:13px;color:var(--muted);text-align:center;margin:8px 0 2px;min-height:18px}
 .hint b{color:var(--gold)}
 
+/* Lecteur intégré */
+#playerbar{position:fixed;left:12px;right:12px;bottom:calc(8px + env(safe-area-inset-bottom));height:80px;border-radius:12px;
+  overflow:hidden;z-index:15;background:#000;border:1px solid var(--gold)}
+#playerbar iframe{display:block;border:0;width:100%;height:80px}
+#playerbar .mask{position:absolute;left:0;top:0;bottom:0;right:74px;background:var(--card);display:flex;flex-direction:column;
+  justify-content:center;padding:0 14px;font-size:14px;z-index:2}
+#playerbar .mask span{color:var(--gold);font-size:13px;margin-top:2px}
+body.withbar .screen{padding-bottom:100px}
 /* Overlays */
 .overlay{position:fixed;inset:0;background:rgba(5,3,9,.78);display:flex;align-items:flex-end;z-index:20}
 .sheet{width:100%;max-height:88dvh;overflow:auto;background:var(--bg2);border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
@@ -111,6 +119,10 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 </head>
 <body>
 <div id="app"></div>
+<div id="playerbar" hidden>
+  <div id="embed"></div>
+  <div class="mask"><b>🎵 Musique mystère</b><span>Si rien ne joue, touche ▶ juste ici →</span></div>
+</div>
 <script src="songs.js"></script>
 <script>
 "use strict";
@@ -137,7 +149,7 @@ const SONG = SONGS.map((s, i) => ({ id: i, film: s[0], year: s[1], composer: s[2
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "5 (vérif. lecture)";
+const APP_VERSION = "6 (lecteur intégré)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -288,7 +300,42 @@ async function playUri(uri) {
   }
   return r.status === 403 ? "premium" : "nodevice";
 }
-async function pause() { try { await api("/me/player/pause", { method: "PUT" }); } catch {} }
+const playMode = () => LS.get("mode", "embed"); // "embed" = lecteur intégré, "connect" = appli Spotify / autre appareil
+let embedApiResolve; const embedApi = new Promise(r => embedApiResolve = r);
+window.onSpotifyIframeApiReady = API => embedApiResolve(API);
+let EmbedCtl = null, embedState = {}, readyWaiters = [];
+function showBar(on) {
+  const bar = $("#playerbar"); if (!bar) return;
+  bar.hidden = !on; document.body.classList.toggle("withbar", on);
+}
+function waitReady(ms) { return new Promise(res => { readyWaiters.push(res); setTimeout(res, ms); }); }
+async function getEmbed(uri) {
+  if (EmbedCtl) return { c: EmbedCtl, fresh: false };
+  const API = await Promise.race([embedApi, sleep(8000).then(() => null)]);
+  if (!API) throw new Error("embed-api");
+  return new Promise(res => {
+    API.createController($("#embed"), { uri, width: "100%", height: 80 }, c => {
+      EmbedCtl = c;
+      c.addListener("ready", () => { const w = readyWaiters; readyWaiters = []; w.forEach(f => f()); });
+      c.addListener("playback_update", e => { embedState = e.data || {}; });
+      res({ c, fresh: true });
+    });
+  });
+}
+async function playEmbedded(uri) {
+  showBar(true);
+  const { c, fresh } = await getEmbed(uri);
+  if (fresh) await waitReady(5000);
+  else if (embedState.playingURI !== uri) { c.loadUri(uri); await waitReady(5000); }
+  else { c.seek(0); }
+  try { c.play(); } catch {}
+  await sleep(2500);
+  return embedState.playingURI === uri && embedState.isPaused === false;
+}
+async function pause() {
+  if (playMode() === "embed") { try { EmbedCtl && EmbedCtl.pause(); } catch {} return; }
+  try { await api("/me/player/pause", { method: "PUT" }); } catch {}
+}
 async function resume() { try { await api("/me/player/play", { method: "PUT" }); } catch {} }
 
 
@@ -370,6 +417,7 @@ function render() {
   if (screen === "game" && G && G.winner != null) screen = "win";
   app.innerHTML = ({ home: viewHome, settings: viewSettings, setup: viewSetup, game: viewGame, win: viewWin })[screen]();
   ({ home: bindHome, settings: bindSettings, setup: bindSetup, game: bindGame, win: bindWin })[screen]();
+  showBar(playMode() === "embed" && screen === "game" && G && G.phase !== "ready" && !!EmbedCtl);
 }
 
 /* ---------- Accueil ---------- */
@@ -408,7 +456,13 @@ function viewSettings() {
     </div>
     <button class="btn" id="diag">🩺 Diagnostic Spotify</button>
     <p class="muted">Version du jeu : ${APP_VERSION}</p>
-    <label>Appareil de lecture</label>
+    <label>Mode de lecture</label>
+    <select id="mode">
+      <option value="embed" ${playMode() === "embed" ? "selected" : ""}>Lecteur intégré au jeu (recommandé sur téléphone)</option>
+      <option value="connect" ${playMode() === "connect" ? "selected" : ""}>Appli Spotify / autre appareil (enceinte, PC, TV)</option>
+    </select>
+    <p class="muted">Lecteur intégré : la musique sort directement du jeu, sans l'appli Spotify. Selon Spotify, il peut s'agir d'extraits de 30 s.</p>
+    <label>Appareil de lecture (mode appli Spotify)</label>
     <div class="row"><select id="dev"><option value="">Automatique (appareil actif)</option></select>
       <button class="btn sec small" id="loaddev">↻</button></div>
     <p class="muted">Astuce : choisis une enceinte, un ordinateur ou une TV pour que personne ne voie le titre sur l'écran Spotify.</p>
@@ -430,6 +484,7 @@ function bindSettings() {
   $("#login") && ($("#login").onclick = () => { LS.set("clientId", $("#cid").value.trim()); login(); });
   $("#logout") && ($("#logout").onclick = logout);
   $("#diag").onclick = showDiagnostic;
+  $("#mode").onchange = e => { pause(); LS.set("mode", e.target.value); showBar(false); };
   $("#startAt").onchange = e => LS.set("startAt", +e.target.value);
   const sel = $("#dev");
   const pref = LS.get("device", "");
@@ -514,7 +569,7 @@ function viewGame() {
       <div class="muted" style="margin-top:8px">Appuie sur lecture</div></div>`;
   } else if (ph === "listen") {
     mystery = `<div class="mystery"><div class="q">?</div>
-      <div class="ctrl"><button id="replay">↺ Réécouter</button><button id="pause">⏸ Pause</button><button id="devbtn">🔊 Appareil</button></div></div>`;
+      <div class="ctrl"><button id="replay">↺ Réécouter</button><button id="pause">⏸ Pause</button>${playMode() === "embed" ? "" : `<button id="devbtn">🔊 Appareil</button>`}</div></div>`;
   } else {
     const ok = G.result.ok;
     mystery = `<div class="mystery reveal ${ok ? "ok" : "ko"}">
@@ -565,7 +620,7 @@ function bindGame() {
   } else if (ph === "listen") {
     $("#replay").onclick = playCurrent;
     $("#pause").onclick = () => { pause(); setStatus("En pause"); };
-    $("#devbtn").onclick = chooseDevice;
+    $("#devbtn") && ($("#devbtn").onclick = chooseDevice);
     tl.querySelectorAll(".gap").forEach(g => g.onclick = () => { G.gap = +g.dataset.g; save(); render(); });
     $("#validate").onclick = validate;
   } else {
@@ -580,6 +635,13 @@ async function playCurrent() {
     const uri = await resolveSong(s);
     if (G.card !== s.id) return;
     if (!uri) { setStatus("Morceau introuvable sur Spotify — on en tire un autre."); offerFreeSkip(); return; }
+    if (playMode() === "embed") {
+      setStatus("Chargement du lecteur…");
+      const ok = await playEmbedded(uri);
+      if (G.card !== s.id) return;
+      setStatus(ok ? "♪ Lecture en cours (extrait)" : "👇 Touche ▶ dans le lecteur en bas de l'écran");
+      return;
+    }
     const res = await playUri(uri);
     if (res === "ok") setStatus("♪ Lecture confirmée sur : " + lastDevice);
     else if (res === "silent") { setStatus("Spotify a reçu le morceau mais ne joue pas (" + lastPlayState + ")."); silentHelp(); }
@@ -719,5 +781,6 @@ function bindWin() {
   render();
 })();
 </script>
+<script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
 </body>
 </html>
