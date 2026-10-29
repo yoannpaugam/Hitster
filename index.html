@@ -153,7 +153,7 @@ body.withbar .screen{padding-bottom:100px}
   <div id="embed"></div>
   <div class="mask"><b>🎵 Musique mystère</b><span>Si rien ne joue, touche ▶ juste ici →</span></div>
 </div>
-<script src="songs.js?v=11"></script>
+<script src="songs.js?v=17"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -178,12 +178,16 @@ function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.fl
 const SONG = SONGS.map((s, i) => ({ id: i, film: s[0], year: s[1], composer: s[2], track: s[3], orig: s[4] || s[0],
   level: s[5] === "F" ? "facile" : "moyen", sid: s[6] || "" }));
 if (!SONG.some(s => s.level === "facile")) setTimeout(() => toast("Liste des musiques pas à jour (songs.js) : recharge la page."), 800);
+const songKey = s => s.orig + "|" + s.track;
+// Le jeu peut tourner sans connexion Spotify si le morceau a déjà son identifiant dans songs.js (lecteur intégré)
+const needsLogin = s => playMode() === "connect" || !(s.sid || (LS.get("ids2", {}) || {})[songKey(s)]);
+const allReady = () => playMode() === "embed" && SONG.every(s => s.sid);
 const LEVELS = { facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
 
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "16 (fenêtre résultat)";
+const APP_VERSION = "17 (sans connexion)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -254,8 +258,8 @@ async function api(path, opts = {}, tries = 0) {
 function lastName(c) { const first = c.split(/&| et | and |,/)[0].trim().split(" "); return first[first.length - 1]; }
 async function resolveSong(s) {
   if (s.sid) return "spotify:track:" + s.sid;
-  const cache = LS.get("ids", {});
-  if (cache[s.id]) return cache[s.id];
+  const cache = LS.get("ids2", {}), key = songKey(s);
+  if (cache[key]) return cache[key];
   const ln = norm(lastName(s.composer)), tn = norm(s.track), fn = norm(s.orig);
   const queries = [`${s.track} ${s.orig}`, `${s.track} ${lastName(s.composer)}`, `${s.orig} ${lastName(s.composer)}`];
   let best = null, bestScore = 0;
@@ -276,7 +280,7 @@ async function resolveSong(s) {
   }
   if (!best || bestScore < 2) return null;
   const uri = best.uri;
-  cache[s.id] = uri; LS.set("ids", cache);
+  cache[key] = uri; LS.set("ids2", cache);
   return uri;
 }
 
@@ -465,10 +469,11 @@ function viewHome() {
       <h1>Ciné<span>Hits</span></h1>
       <div class="muted" style="font-size:12px">Version ${APP_VERSION}</div>
       <p class="muted">Écoute la musique, place le film au bon endroit sur ta frise. ${SONG.length} compositions de films.</p>
-      <div style="margin:10px 0 18px"><span class="pill"><span class="dot ${isLogged() ? "on" : ""}"></span>${isLogged() ? "Spotify connecté" : "Spotify non connecté"}</span></div>
-      ${isLogged() ? "" : `<button class="btn" id="login">Se connecter à Spotify</button>`}
-      ${G && G.winner == null ? `<button class="btn ${isLogged() ? "" : "sec"}" id="resume">Reprendre la partie</button>` : ""}
-      <button class="btn ${isLogged() && !(G && G.winner == null) ? "" : "sec"}" id="new">Nouvelle partie</button>
+      <div style="margin:10px 0 18px"><span class="pill"><span class="dot ${isLogged() || allReady() ? "on" : ""}"></span>${
+        allReady() ? "Prêt à jouer · aucune connexion nécessaire" : isLogged() ? "Spotify connecté" : "Spotify non connecté"}</span></div>
+      ${isLogged() || allReady() ? "" : `<button class="btn" id="login">Se connecter à Spotify</button>`}
+      ${G && G.winner == null ? `<button class="btn ${isLogged() || allReady() ? "" : "sec"}" id="resume">Reprendre la partie</button>` : ""}
+      <button class="btn ${(isLogged() || allReady()) && !(G && G.winner == null) ? "" : "sec"}" id="new">Nouvelle partie</button>
       <button class="btn sec" id="options"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></g><g fill="currentColor" stroke="var(--card)" stroke-width="1.5"><circle cx="9" cy="6" r="2.6"/><circle cx="15" cy="12" r="2.6"/><circle cx="7" cy="18" r="2.6"/></g></svg> Options de partie<br><span style="font-weight:500;font-size:13px" class="muted">Niveau ${LEVELS[opt().level]} · ${opt().yMin}–${opt().yMax}</span></button>
       <button class="btn ghost" id="settings">⚙️ Réglages</button>
     </div></div>`;
@@ -514,6 +519,14 @@ function viewSettings() {
       <button class="btn sec" id="test" ${isLogged() ? "" : "disabled"}>Lancer la vérification</button>
       <div id="testout" class="test-list"></div>
     </div>
+    <div class="box">
+      <b>Exporter la liste (jeu sans connexion)</b>
+      <p class="muted">Crée un nouveau <code>songs.js</code> qui contient l'identifiant Spotify de chaque morceau trouvé.
+        Dépose-le sur GitHub : tout le monde pourra alors jouer <b>sans se connecter</b>, même sans Premium (extraits de 30 s).
+        Lance d'abord « Vérifier la liste ».</p>
+      <div class="muted" id="exportstat"></div>
+      <button class="btn" id="export">⬇️ Exporter songs.js</button>
+    </div>
     <button class="btn ghost" id="clearcache">Vider la mémoire des morceaux trouvés</button>
   </div>`;
 }
@@ -524,6 +537,8 @@ function bindSettings() {
   $("#login") && ($("#login").onclick = () => { LS.set("clientId", $("#cid").value.trim()); login(); });
   $("#logout") && ($("#logout").onclick = logout);
   $("#diag").onclick = showDiagnostic;
+  { const c = LS.get("ids2", {}) || {}, n = SONG.filter(s => s.sid || c[songKey(s)]).length;
+    $("#exportstat").textContent = `${n} / ${SONG.length} morceaux ont un identifiant Spotify.`; }
   $("#mode").onchange = e => { pause(); LS.set("mode", e.target.value); showBar(false); };
   $("#startAt").onchange = e => LS.set("startAt", +e.target.value);
   const sel = $("#dev");
@@ -539,7 +554,8 @@ function bindSettings() {
       toast(devs.length ? devs.length + " appareil(s) trouvé(s)" : "Aucun appareil : ouvre Spotify sur l'appareil voulu.");
     } catch (e) { toast(e instanceof AuthError ? "Connecte-toi d'abord à Spotify." : "Erreur Spotify."); }
   };
-  $("#clearcache").onclick = () => { LS.del("ids"); toast("Mémoire vidée."); };
+  $("#clearcache").onclick = () => { LS.del("ids2"); toast("Mémoire vidée."); };
+  $("#export").onclick = exportSongs;
   $("#test").onclick = async () => {
     const out = $("#testout"), btn = $("#test"); btn.disabled = true; out.innerHTML = "";
     let ko = 0;
@@ -662,7 +678,7 @@ function bindSetup() {
   $("#start").onclick = () => {
     const teams = +$("#teams").value, target = +$("#target").value, tokens = +$("#tokens").value, { yMin, yMax, level } = opt();
     LS.set("teams", teams); LS.set("target", target); LS.set("tokens", tokens);
-    if (!isLogged()) toast("Pense à te connecter à Spotify pour entendre la musique.");
+    if (!allReady() && !isLogged()) toast("Pense à te connecter à Spotify pour entendre la musique.");
     statusMsg = "";
     newGame(teams, target, yMin, yMax, level, tokens); go("game");
   };
@@ -794,7 +810,7 @@ function bindGame() {
 }
 async function playCurrent() {
   const s = SONG[G.card];
-  if (!isLogged()) { setStatus("Connecte-toi à Spotify (menu ☰ → Réglages)."); return; }
+  if (needsLogin(s) && !isLogged()) { setStatus("Ce morceau demande une connexion Spotify (menu ☰ → Réglages)."); return; }
   setStatus("");
   try {
     const uri = await resolveSong(s);
@@ -922,6 +938,32 @@ function validate() {
   G.phase = "revealed"; G.result = { ok, hint, lines };
   save(); render(); showResult();
   if (navigator.vibrate) navigator.vibrate(ok ? 60 : [40, 60, 40]);
+}
+function exportSongs() {
+  const c = LS.get("ids2", {}) || {};
+  let found = 0;
+  const rows = SONG.map(s => {
+    const raw = SONGS[s.id].slice(0, 6);
+    while (raw.length < 6) raw.push(raw.length === 4 ? s.orig : raw.length === 5 ? (s.level === "facile" ? "F" : "M") : "");
+    const id = s.sid || (c[songKey(s)] || "").split(":").pop();
+    if (id) { found++; raw.push(id); }
+    return "  " + JSON.stringify(raw).replace(/","/g, '", "').replace(/",(\d)/g, '", $1').replace(/(\d),"/g, '$1, "') + ",";
+  });
+  const txt = `// Liste des compositions de films.
+// Format : [Titre affiché, Année de sortie du film, Compositeur, Morceau, Titre original, Niveau, ID Spotify]
+// Niveau : "F" = Facile · "M" = Moyen (le niveau Difficile reprend toute la liste)
+// Pour corriger un morceau : remplace son ID (lien https://open.spotify.com/track/XXXXXXXX -> "XXXXXXXX").
+// Règle : au maximum 2 morceaux par film.
+const SONGS = [
+${rows.join("\n")}
+];
+`;
+  const blob = new Blob([txt], { type: "text/javascript" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "songs.js";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast(`songs.js exporté : ${found} / ${SONG.length} morceaux avec identifiant.` + (found < SONG.length ? " Les autres demanderont une connexion." : ""), 4500);
 }
 function showResult() {
   const s = SONG[G.card], r = G.result; if (!r) return;
