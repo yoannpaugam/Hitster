@@ -110,6 +110,10 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 .rline.ok{border-color:var(--ok);color:var(--ok)}
 .rline.ko{border-color:var(--ko);color:#ffb3b3}
 #revcard{cursor:pointer}
+.bigcode{font-family:Georgia,serif;font-size:54px;font-weight:700;letter-spacing:10px;color:var(--gold2);margin:4px 0 6px}
+.turnbar{background:rgba(232,180,76,.12);border:1px solid var(--gold);border-radius:12px;padding:8px 12px;font-size:14px;text-align:center;margin-top:8px}
+.netdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#f0a030;vertical-align:1px}
+.netdot.on{background:var(--ok)}
 /* Curseur de période */
 .range{position:relative;height:44px;margin:4px 6px 0}
 .range .track{position:absolute;left:0;right:0;top:19px;height:6px;border-radius:6px;background:var(--line)}
@@ -153,7 +157,8 @@ body.withbar .screen{padding-bottom:100px}
   <div id="embed"></div>
   <div class="mask"><b>🎵 Musique mystère</b><span>Si rien ne joue, touche ▶ juste ici →</span></div>
 </div>
-<script src="songs.js?v=17"></script>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
+<script src="songs.js?v=18"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -187,7 +192,7 @@ const LEVELS = { facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "17 (sans connexion)";
+const APP_VERSION = "18 (multi-appareils)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -446,7 +451,7 @@ function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moye
 function drawCard() {
   if (!G.deck.length) { G.deck = shuffle(songsIn(G.yMin || YEAR_MIN, G.yMax || YEAR_MAX, G.level || "moyen").map(s => s.id).filter(id => !G.players.some(p => p.cards.includes(id)))); }
   // phase : "ready" (pas encore écouté) → "listen" (musique lancée, choix de la case) → "revealed"
-  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.picking = null; G.bonus = false;
+  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.bonus = false;
 }
 const sortedCards = p => p.cards.map(id => SONG[id]).sort((a, b) => a.year - b.year);
 
@@ -456,9 +461,10 @@ function go(s) { screen = s; render(); }
 function render() {
   const app = $("#app");
   if (screen === "game" && G && G.winner != null) screen = "win";
-  app.innerHTML = ({ home: viewHome, settings: viewSettings, options: viewOptions, setup: viewSetup, game: viewGame, win: viewWin })[screen]();
-  ({ home: bindHome, settings: bindSettings, options: bindOptions, setup: bindSetup, game: bindGame, win: bindWin })[screen]();
-  showBar(playMode() === "embed" && screen === "game" && G && G.phase !== "ready" && !!EmbedCtl);
+  if (screen === "game" && !G) screen = NET ? "lobby" : "home";
+  app.innerHTML = ({ home: viewHome, settings: viewSettings, options: viewOptions, setup: viewSetup, game: viewGame, win: viewWin, join: viewJoin, lobby: viewLobby })[screen]();
+  ({ home: bindHome, settings: bindSettings, options: bindOptions, setup: bindSetup, game: bindGame, win: bindWin, join: bindJoin, lobby: bindLobby })[screen]();
+  showBar(playMode() === "embed" && screen === "game" && G && G.phase !== "ready" && activeHere() && !!EmbedCtl);
 }
 
 /* ---------- Accueil ---------- */
@@ -472,8 +478,10 @@ function viewHome() {
       <div style="margin:10px 0 18px"><span class="pill"><span class="dot ${isLogged() || allReady() ? "on" : ""}"></span>${
         allReady() ? "Prêt à jouer · aucune connexion nécessaire" : isLogged() ? "Spotify connecté" : "Spotify non connecté"}</span></div>
       ${isLogged() || allReady() ? "" : `<button class="btn" id="login">Se connecter à Spotify</button>`}
-      ${G && G.winner == null ? `<button class="btn ${isLogged() || allReady() ? "" : "sec"}" id="resume">Reprendre la partie</button>` : ""}
-      <button class="btn ${(isLogged() || allReady()) && !(G && G.winner == null) ? "" : "sec"}" id="new">Nouvelle partie</button>
+      ${NET ? `<button class="btn" id="backmulti">Revenir à la partie à plusieurs (${esc(NET.code)})</button>` : ""}
+      ${!NET && G && G.winner == null ? `<button class="btn ${isLogged() || allReady() ? "" : "sec"}" id="resume">Reprendre la partie</button>` : ""}
+      <button class="btn ${(isLogged() || allReady()) && !(G && G.winner == null) && !NET ? "" : "sec"}" id="new">Nouvelle partie</button>
+      <button class="btn sec" id="joinbtn">📲 Rejoindre une partie</button>
       <button class="btn sec" id="options"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></g><g fill="currentColor" stroke="var(--card)" stroke-width="1.5"><circle cx="9" cy="6" r="2.6"/><circle cx="15" cy="12" r="2.6"/><circle cx="7" cy="18" r="2.6"/></g></svg> Options de partie<br><span style="font-weight:500;font-size:13px" class="muted">Niveau ${LEVELS[opt().level]} · ${opt().yMin}–${opt().yMax}</span></button>
       <button class="btn ghost" id="settings">⚙️ Réglages</button>
     </div></div>`;
@@ -481,7 +489,9 @@ function viewHome() {
 function bindHome() {
   $("#login") && ($("#login").onclick = login);
   $("#resume") && ($("#resume").onclick = () => go("game"));
-  $("#new").onclick = () => go("setup");
+  $("#new").onclick = () => { if (NET && !confirm("Quitter la partie à plusieurs en cours ?")) return; if (NET) leaveMulti(); go("setup"); };
+  $("#joinbtn").onclick = () => { if (NET && !confirm("Quitter la partie à plusieurs en cours ?")) return; if (NET) leaveMulti(); go("join"); };
+  $("#backmulti") && ($("#backmulti").onclick = () => go(G ? "game" : "lobby"));
   $("#settings").onclick = () => go("settings");
   $("#options").onclick = () => { optBack = "home"; go("options"); };
 }
@@ -511,6 +521,12 @@ function viewSettings() {
     <div class="row"><select id="dev"><option value="">Automatique (appareil actif)</option></select>
       <button class="btn sec small" id="loaddev">↻</button></div>
     <p class="muted">Astuce : choisis une enceinte, un ordinateur ou une TV pour que personne ne voie le titre sur l'écran Spotify.</p>
+    <label>Relais pour les parties à plusieurs</label>
+    <select id="broker">
+      <option value="wss://broker.hivemq.com:8884/mqtt" ${BROKER().includes("hivemq") ? "selected" : ""}>Relais 1 (par défaut)</option>
+      <option value="wss://broker.emqx.io:8084/mqtt" ${BROKER().includes("emqx") ? "selected" : ""}>Relais 2 (secours)</option>
+    </select>
+    <p class="muted">Si les téléphones n'arrivent pas à se connecter, choisissez tous le relais 2 (tous les appareils doivent utiliser le même).</p>
     <label>Démarrer chaque morceau à</label>
     <select id="startAt">${[0, 15, 30, 45].map(v => `<option value="${v}" ${(LS.get("startAt", 0) || 0) == v ? "selected" : ""}>${v} s</option>`).join("")}</select>
     <div class="box">
@@ -541,6 +557,7 @@ function bindSettings() {
     $("#exportstat").textContent = `${n} / ${SONG.length} morceaux ont un identifiant Spotify.`; }
   $("#mode").onchange = e => { pause(); LS.set("mode", e.target.value); showBar(false); };
   $("#startAt").onchange = e => LS.set("startAt", +e.target.value);
+  $("#broker").onchange = e => { LS.set("broker", e.target.value); if (NET) netStart(); toast("Relais changé."); };
   const sel = $("#dev");
   const pref = LS.get("device", "");
   const savedName = LS.get("deviceName", "");
@@ -637,12 +654,20 @@ function bindOptions() {
 }
 
 /* ---------- Préparation de partie ---------- */
+let setupMulti = LS.get("multi", false);
 function viewSetup() {
   return `<div class="screen">
     <div class="top"><h2>Nouvelle partie</h2><button class="iconbtn" id="back">✕</button></div>
     <div class="content">
-    <label>Nombre d'équipes</label>
-    <select id="teams">${[1, 2, 3, 4, 5, 6, 7, 8].map(v => `<option value="${v}" ${v === (+($("#teams") && $("#teams").value) || LS.get("teams", 2)) ? "selected" : ""}>${v} équipe${v > 1 ? "s" : ""}</option>`).join("")}</select>
+    <label>Mode de jeu</label>
+    <div class="row lvlrow">
+      <button class="btn ${setupMulti ? "sec" : ""}" data-m="0">📱 Un seul téléphone</button>
+      <button class="btn ${setupMulti ? "" : "sec"}" data-m="1">📱📱 Un téléphone par équipe</button>
+    </div>
+    ${setupMulti
+      ? `<p class="muted">Tu crées la partie et tu es l'<b>Équipe 1</b>. Les autres équipes la rejoignent depuis leur téléphone avec le code à 5 chiffres qui va s'afficher (accueil → « Rejoindre une partie »).</p>`
+      : `<label>Nombre d'équipes</label>
+    <select id="teams">${[1, 2, 3, 4, 5, 6, 7, 8].map(v => `<option value="${v}" ${v === (+($("#teams") && $("#teams").value) || LS.get("teams", 2)) ? "selected" : ""}>${v} équipe${v > 1 ? "s" : ""}</option>`).join("")}</select>`}
     <label>Options de partie</label>
     <button class="box" id="optsum" style="width:100%;text-align:left;color:var(--text);font-size:15px;margin-top:0">
       <span id="optsumtxt"></span><br><span class="muted">Modifier ›</span></button>
@@ -665,23 +690,309 @@ function viewSetup() {
       • On passe à l'équipe suivante. La première à atteindre l'objectif gagne.
     </div>
     </div>
-    <div class="footer"><button class="btn" id="start">Lancer le jeu</button></div>
+    <div class="footer"><button class="btn" id="start">${setupMulti ? "Créer la partie" : "Lancer le jeu"}</button></div>
   </div>`;
 }
 function bindSetup() {
   $("#back").onclick = () => go("home");
-  const o = opt(), n = songsIn(o.yMin, o.yMax, o.level).length;
+  document.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { setupMulti = b.dataset.m === "1"; LS.set("multi", setupMulti); render(); });
+  const o = opt(), n = songsIn(o.yMin, o.yMax, o.level).length, need = (setupMulti ? 8 : +$("#teams").value) + 5;
   $("#optsumtxt").innerHTML = `Niveau <b>${LEVELS[o.level]}</b> · ${o.yMin}–${o.yMax} · <b>${n}</b> musiques`;
   $("#optsum").onclick = () => { optBack = "setup"; go("options"); };
-  if (n < +$("#teams").value + 5) { $("#start").disabled = true; $("#optsumtxt").innerHTML += `<br><span style="color:var(--ko)">Pas assez de musiques : élargis les options.</span>`; }
-  $("#teams").onchange = () => render();
+  if (n < need) { $("#start").disabled = true; $("#optsumtxt").innerHTML += `<br><span style="color:var(--ko)">Pas assez de musiques : élargis les options.</span>`; }
+  $("#teams") && ($("#teams").onchange = () => render());
   $("#start").onclick = () => {
-    const teams = +$("#teams").value, target = +$("#target").value, tokens = +$("#tokens").value, { yMin, yMax, level } = opt();
-    LS.set("teams", teams); LS.set("target", target); LS.set("tokens", tokens);
+    const target = +$("#target").value, tokens = +$("#tokens").value, { yMin, yMax, level } = opt();
+    LS.set("target", target); LS.set("tokens", tokens);
     if (!allReady() && !isLogged()) toast("Pense à te connecter à Spotify pour entendre la musique.");
     statusMsg = "";
+    if (setupMulti) { createMulti({ target, tokens, yMin, yMax, level }); return; }
+    const teams = +$("#teams").value; LS.set("teams", teams);
     newGame(teams, target, yMin, yMax, level, tokens); go("game");
   };
+}
+
+/* ================= Multi-appareils (relais MQTT public) ================= */
+// L'appareil qui crée la partie est l'arbitre : il applique les actions et diffuse l'état à tous.
+const BROKER = () => LS.get("broker", "wss://broker.hivemq.com:8884/mqtt");
+let NET = LS.get("net", null);          // { code, role: "host" | "guest" }
+let LOBBY = NET && NET.role === "host" ? LS.get("lobby", null) : null; // { devices: { cid: équipe }, opts }
+let mq = null, netOnline = false;
+const myCid = (() => { let c = LS.get("cid", ""); if (!c) { c = randStr(12); LS.set("cid", c); } return c; })();
+const topicOf = t => `cinehits/v1/${NET.code}/${t}`;
+const isGuest = () => !!NET && NET.role === "guest";
+const isHost = () => !!NET && NET.role === "host";
+function myTeam() {
+  if (!NET) return null;
+  if (NET.role === "host") return 0;
+  const t = LOBBY && LOBBY.devices ? LOBBY.devices[myCid] : undefined;
+  return t == null ? null : t;
+}
+const lobbyTeams = () => Object.entries((LOBBY || {}).devices || {})
+  .map(([cid, team]) => ({ team, me: cid === myCid })).sort((a, b) => a.team - b.team);
+
+function netStart() {
+  if (mq) { try { mq.end(true); } catch {} mq = null; }
+  if (typeof mqtt === "undefined") { toast("Module réseau indisponible : vérifie ta connexion internet puis recharge.", 4500); return; }
+  mq = mqtt.connect(BROKER(), {
+    clientId: "cinehits_" + myCid + "_" + Math.random().toString(16).slice(2, 6),
+    reconnectPeriod: 2000, connectTimeout: 8000, keepalive: 30, clean: true
+  });
+  mq.on("connect", () => {
+    netOnline = true;
+    mq.subscribe(topicOf(NET.role === "host" ? "act" : "state"), { qos: 1 });
+    if (NET.role === "host") publishState(); else sendAct({ t: "join" });
+    refreshNet();
+  });
+  const off = () => { if (netOnline) { netOnline = false; refreshNet(); } };
+  mq.on("close", off); mq.on("offline", off);
+  mq.on("message", (t, buf) => {
+    const txt = buf.toString(); if (!txt) { if (isGuest()) onState(null); return; }
+    let m; try { m = JSON.parse(txt); } catch { return; }
+    if (NET.role === "host") onAct(m); else onState(m);
+  });
+}
+function refreshNet() {
+  if (screen === "lobby") return render();
+  const d = $("#netdot"); if (d) d.className = "netdot " + (netOnline ? "on" : "");
+}
+function publishState() {
+  if (!mq || !isHost()) return;
+  mq.publish(topicOf("state"), JSON.stringify({ lobby: LOBBY, G, ts: Date.now() }), { qos: 1, retain: true });
+}
+function sendAct(a) {
+  if (!mq) return;
+  a.cid = myCid;
+  mq.publish(topicOf("act"), JSON.stringify(a), { qos: 1 });
+}
+function createMulti(opts) {
+  if (mq) { try { mq.end(true); } catch {} mq = null; }
+  NET = { code: String(Math.floor(10000 + Math.random() * 90000)), role: "host" };
+  LOBBY = { devices: { [myCid]: 0 }, opts };
+  G = null; LS.del("game"); LS.set("net", NET); LS.set("lobby", LOBBY);
+  go("lobby"); netStart();
+}
+function joinMulti(code) {
+  if (mq) { try { mq.end(true); } catch {} mq = null; }
+  NET = { code, role: "guest" }; LOBBY = null; G = null; LS.set("net", NET);
+  go("lobby"); netStart();
+  setTimeout(() => { if (NET && NET.code === code && !LOBBY) toast("Aucune partie trouvée avec ce code pour l'instant… Vérifie le code.", 4500); }, 7000);
+}
+function leaveMulti(msg) {
+  if (mq) {
+    try {
+      if (isHost()) mq.publish(topicOf("state"), "", { qos: 1, retain: true });
+      else sendAct({ t: "leave" });
+    } catch {}
+    const c = mq; mq = null; setTimeout(() => { try { c.end(true); } catch {} }, 600);
+  }
+  pause(); showBar(false); closeSheet();
+  NET = null; LOBBY = null; netOnline = false; LS.del("net"); LS.del("lobby");
+  G = LS.get("game", null); if (G && G.multi) { G = null; LS.del("game"); }
+  pickTeam = null; if (msg) toast(msg, 4000);
+  go("home");
+}
+function renumberLobby() {
+  const list = Object.entries(LOBBY.devices).sort((a, b) => a[1] - b[1]);
+  list.forEach(([cid], i) => { LOBBY.devices[cid] = i; });
+}
+function onAct(a) {
+  if (!a || !a.cid) return;
+  if (a.t === "join") {
+    if (LOBBY.devices[a.cid] == null && !G) {
+      const n = Object.keys(LOBBY.devices).length;
+      if (n < 8) LOBBY.devices[a.cid] = n;
+    }
+    LS.set("lobby", LOBBY); publishState(); if (screen === "lobby") render();
+    return;
+  }
+  if (a.t === "leave") {
+    if (!G && LOBBY.devices[a.cid] != null && a.cid !== myCid) { delete LOBBY.devices[a.cid]; renumberLobby(); }
+    LS.set("lobby", LOBBY); publishState(); if (screen === "lobby") render();
+    return;
+  }
+  const by = LOBBY.devices[a.cid];
+  if (by == null || !G) return;
+  a.by = by;
+  const prev = JSON.parse(JSON.stringify(G));
+  if (applyAction(a)) afterChange(prev);
+}
+function onState(m) {
+  if (!m || !m.lobby) { if (LOBBY) leaveMulti("La partie a été terminée par son créateur."); return; }
+  const prev = G;
+  LOBBY = m.lobby; G = m.G;
+  if (!G) { pickTeam = null; if (screen !== "lobby") screen = "lobby"; render(); return; }
+  if (myTeam() == null) { leaveMulti("Cette partie a déjà commencé sans toi."); return; }
+  if (G.ended) { leaveMulti("Le créateur a terminé la partie."); return; }
+  postState(prev);
+}
+function startMulti() {
+  const o = LOBBY.opts, n = Object.keys(LOBBY.devices).length;
+  newGame(n, o.target, o.yMin, o.yMax, o.level, o.tokens);
+  G.multi = true;
+  const prev = null; afterChange(prev);
+}
+
+/* ---------- Écrans « Rejoindre » et salle d'attente ---------- */
+function viewJoin() {
+  return `<div class="screen">
+    <div class="top"><h2>Rejoindre une partie</h2><button class="iconbtn" id="back">✕</button></div>
+    <div class="content">
+      <label>Code de la partie</label>
+      <input id="code" inputmode="numeric" pattern="[0-9]*" maxlength="5" autocomplete="off" placeholder="•••••"
+        style="font-size:34px;letter-spacing:10px;text-align:center;font-family:Georgia,serif">
+      <p class="muted">Demande le code à 5 chiffres à la personne qui a créé la partie.</p>
+    </div>
+    <div class="footer"><button class="btn" id="join" disabled>Rejoindre</button></div>
+  </div>`;
+}
+function bindJoin() {
+  $("#back").onclick = () => go("home");
+  const inp = $("#code");
+  inp.oninput = () => { inp.value = inp.value.replace(/\D/g, "").slice(0, 5); $("#join").disabled = inp.value.length !== 5; };
+  inp.focus();
+  $("#join").onclick = () => joinMulti(inp.value);
+}
+function viewLobby() {
+  const host = isHost(), teams = lobbyTeams(), me = myTeam();
+  return `<div class="screen">
+    <div class="top"><h2>${host ? "Partie à plusieurs" : "Salle d'attente"}</h2><button class="iconbtn" id="back">✕</button></div>
+    <div class="content">
+      <div class="box" style="text-align:center">
+        <div class="muted">Code de la partie</div>
+        <div class="bigcode">${esc(NET ? NET.code : "")}</div>
+        ${host ? `<div class="muted">Les autres équipes ouvrent le jeu → <b>Rejoindre une partie</b> → saisissent ce code.</div>` : ""}
+      </div>
+      ${!host ? `<p style="text-align:center;font-size:17px">${me != null ? `Tu es <span class="teambadge">Équipe ${me + 1}</span>` : LOBBY ? "Connexion à la partie…" : "Recherche de la partie…"}</p>` : ""}
+      <label>Équipes connectées (${teams.length})</label>
+      ${teams.map(t => `<div class="score"><b>Équipe ${t.team + 1}</b><span class="muted">${t.me ? "ce téléphone" : t.team === 0 ? "créateur" : "✓ connectée"}</span></div>`).join("") || `<p class="muted">—</p>`}
+      <p class="muted" style="margin-top:12px"><span class="netdot ${netOnline ? "on" : ""}"></span> ${netOnline ? "Connecté au relais" : "Connexion au relais…"}</p>
+    </div>
+    <div class="footer">${host
+      ? `<button class="btn" id="go" ${teams.length < 2 ? "disabled" : ""}>${teams.length < 2 ? "En attente d'une autre équipe…" : `Lancer la partie (${teams.length} équipes)`}</button>`
+      : `<button class="btn sec" disabled>En attente du lancement…</button>`}</div>
+  </div>`;
+}
+function bindLobby() {
+  $("#back").onclick = () => { if (confirm(isHost() ? "Annuler cette partie pour tout le monde ?" : "Quitter la salle d'attente ?")) leaveMulti(); };
+  $("#go") && ($("#go").onclick = startMulti);
+}
+
+/* ================= Actions de jeu (identiques en local et à plusieurs) ================= */
+let pickTeam = null;      // équipe en train de choisir sa case de vote (sur cet appareil)
+let shownSeq = null;      // dernier résultat affiché dans la fenêtre
+let wantPlayNext = false; // relancer la lecture quand la nouvelle carte arrive
+function ensureG() {
+  if (!G) return;
+  if (!Array.isArray(G.chals)) G.chals = [];
+  delete G.picking;
+}
+const activeHere = () => !!G && (!G.multi || myTeam() === G.turn);
+function dispatch(a) {
+  if (!G) return;
+  if (isGuest()) { sendAct(a); return; }
+  a.by = myTeam();
+  const prev = JSON.parse(JSON.stringify(G));
+  if (applyAction(a)) afterChange(prev);
+}
+function afterChange(prev) {
+  save();
+  if (isHost()) publishState();
+  postState(prev);
+}
+function postState(prev) {
+  ensureG();
+  if (G.winner != null) { pause(); showBar(false); }
+  const newCard = !prev || prev.card !== G.card;
+  if (newCard) {
+    pickTeam = null; tlScroll = 0; statusMsg = "";
+    if (prev) pause();
+    if (prev && G.winner == null && (prev.turn !== G.turn)) {
+      toast(G.multi && myTeam() === G.turn ? "🎧 C'est au tour de ton équipe !" : "À " + cur().name + " de jouer !");
+      if (G.multi && myTeam() === G.turn && navigator.vibrate) navigator.vibrate([60, 60, 60]);
+    }
+  }
+  if (G.phase !== "listen") pickTeam = null;
+  if (["home", "lobby", "join", "setup"].includes(screen)) screen = "game";
+  render();
+  if (newCard && wantPlayNext) { wantPlayNext = false; if (activeHere()) playCurrent(); }
+  if (G.phase === "revealed" && G.resultSeq !== shownSeq) {
+    shownSeq = G.resultSeq;
+    if (prev && prev.phase !== "revealed") {
+      showResult();
+      if (navigator.vibrate) navigator.vibrate(G.result && G.result.ok ? 60 : [40, 60, 40]);
+    }
+  }
+}
+function applyAction(a) {
+  if (!G) return false;
+  ensureG();
+  const multi = !!G.multi, active = !multi || a.by === G.turn;
+  switch (a.t) {
+    case "play": if (!active || G.phase !== "ready") return false; G.phase = "listen"; return true;
+    case "redraw": if (!active) return false; drawCard(); G.phase = "listen"; return true;
+    case "gap":
+      if (!active || G.phase !== "listen" || G.chals.some(c => c.gap === a.i)) return false;
+      G.gap = a.i; return true;
+    case "vote": {
+      const team = multi ? a.by : a.team;
+      if (G.phase !== "listen" || G.gap == null || team == null || team === G.turn) return false;
+      const pl = G.players[team];
+      if (!pl || (pl.tokens || 0) <= 0 || a.gap === G.gap) return false;
+      if (G.chals.some(c => c.team === team || c.gap === a.gap)) return false;
+      G.chals.push({ team, gap: a.gap }); return true;
+    }
+    case "unvote": {
+      const team = multi ? a.by : a.team, n = G.chals.length;
+      G.chals = G.chals.filter(c => c.team !== team); return G.chals.length !== n;
+    }
+    case "clearvotes": if (!active || !G.chals.length) return false; G.chals = []; return true;
+    case "validate": if (!active || G.phase !== "listen" || G.gap == null) return false; resolveTurn(); return true;
+    case "bonus": {
+      if (!active || G.phase !== "revealed") return false;
+      const pl = cur();
+      if (G.bonus) { pl.tokens = Math.max(0, (pl.tokens || 0) - 1); G.bonus = false; }
+      else { pl.tokens = (pl.tokens || 0) + 1; G.bonus = true; }
+      return true;
+    }
+    case "next": {
+      if (!active || G.phase !== "revealed") return false;
+      const order = [G.turn, ...G.players.map((_, i) => i).filter(i => i !== G.turn)];
+      const w = order.find(i => G.players[i].cards.length >= G.target);
+      if (w != null) { G.winner = w; return true; }
+      G.turn = (G.turn + 1) % G.players.length;
+      drawCard(); return true;
+    }
+    case "end": if (multi && a.by !== 0) return false; G.ended = true; return true;
+  }
+  return false;
+}
+const gapOk = (cards, i, y) => (!cards[i - 1] || cards[i - 1].year <= y) && (!cards[i] || y <= cards[i].year);
+function resolveTurn() {
+  const p = cur(), cards = sortedCards(p), s = SONG[G.card], i = G.gap;
+  const ok = gapOk(cards, i, s.year);
+  let hint = "";
+  if (!ok) {
+    const j = cards.findIndex(c => c.year > s.year);
+    const a = j === -1 ? cards[cards.length - 1] : cards[j - 1], b = j === -1 ? null : cards[j];
+    hint = !a ? `il fallait la placer avant ${b.year}` : !b ? `il fallait la placer après ${a.year}` : `il fallait la placer entre ${a.year} et ${b.year}`;
+  }
+  const lines = [ok ? `✓ ${p.name} a raison : carte gagnée !` : `✗ ${p.name} s'est trompée — ${hint}`];
+  if (ok) p.cards.push(s.id);
+  let won = ok;
+  for (const ch of G.chals) {
+    const c = G.players[ch.team], cOk = gapOk(cards, ch.gap, s.year);
+    if (cOk && !won) {
+      won = true; c.cards.push(s.id); c.tokens = Math.max(0, (c.tokens || 0) - 1);
+      lines.push(`✓ ${c.name} avait raison : elle remporte la carte (et utilise son jeton).`);
+    } else if (cOk) {
+      lines.push(`= ${c.name} avait aussi une bonne case : elle garde son jeton.`);
+    } else {
+      c.tokens = Math.max(0, (c.tokens || 0) - 1); p.tokens = (p.tokens || 0) + 1;
+      lines.push(`✗ Le vote de ${c.name} était faux : son jeton passe à ${p.name} 🪙`);
+    }
+  }
+  G.phase = "revealed"; G.result = { ok, hint, lines }; G.resultSeq = (G.resultSeq || 0) + 1;
 }
 
 /* ---------- Jeu ---------- */
@@ -697,32 +1008,36 @@ function gapLabel(cards, i) {
 }
 
 function viewGame() {
-  if (!Array.isArray(G.chals)) G.chals = [];
-  if (G.picking === false || G.picking === undefined) G.picking = null;
+  ensureG();
   const p = cur(), s = SONG[G.card], ph = G.phase, rev = ph === "revealed";
-  const cards = sortedCards(p);
+  const multi = !!G.multi, me = myTeam(), active = activeHere();
+  const mine = multi && me != null ? G.players[me] : p;
+  const cards = sortedCards(p), chals = G.chals;
   let mystery;
   if (ph === "ready") {
-    mystery = `<div class="mystery"><div class="muted" style="margin-bottom:6px">Nouvelle carte mystère</div>
-      <button class="bigplay" id="play" aria-label="Lecture">▶</button>
-      <div class="muted" style="margin-top:8px">Appuie sur lecture</div></div>`;
+    mystery = active
+      ? `<div class="mystery"><div class="muted" style="margin-bottom:6px">Nouvelle carte mystère</div>
+          <button class="bigplay" id="play" aria-label="Lecture">▶</button>
+          <div class="muted" style="margin-top:8px">Appuie sur lecture</div></div>`
+      : `<div class="mystery"><div class="q">?</div><div class="muted">${esc(p.name)} va lancer la musique…</div></div>`;
   } else if (ph === "listen") {
-    mystery = `<div class="mystery"><div class="q">?</div>
-      <div class="ctrl"><button id="replay">↺ Réécouter</button><button id="pause">⏸ Pause</button>${playMode() === "embed" ? "" : `<button id="devbtn">🔊 Appareil</button>`}</div></div>`;
+    mystery = `<div class="mystery"><div class="q">?</div>${active
+      ? `<div class="ctrl"><button id="replay">↺ Réécouter</button><button id="pause">⏸ Pause</button>${playMode() === "embed" ? "" : `<button id="devbtn">🔊 Appareil</button>`}</div>`
+      : `<div class="muted">${esc(p.name)} écoute et choisit sa case…</div>`}</div>`;
   } else {
-    const ok = G.result.ok;
-    mystery = `<div class="mystery reveal ${ok ? "ok" : "ko"}" id="revcard" role="button" title="Revoir les résultats">
+    mystery = `<div class="mystery reveal ${G.result.ok ? "ok" : "ko"}" id="revcard" role="button" title="Revoir les résultats">
       <div class="year">${s.year}</div>
       <div class="film">${esc(s.film)}</div>
       <div class="track">« ${esc(s.track)} »</div>
       <div class="comp">${esc(s.composer)}</div>
       </div>`;
   }
+  const canTap = ph === "listen" && (pickTeam != null || active);
   let tl = "";
   for (let i = 0; i <= cards.length; i++) {
     if (!rev) {
-      const ch = (G.chals || []).find(c => c.gap === i);
-      tl += `<button class="gap ${G.gap === i ? "sel" : ""} ${ch ? "chal" : ""}" data-g="${i}" ${ph === "ready" ? "disabled" : ""}>${
+      const ch = chals.find(c => c.gap === i);
+      tl += `<button class="gap ${G.gap === i ? "sel" : ""} ${ch ? "chal" : ""}" data-g="${i}" ${canTap ? "" : "disabled"}>${
         G.gap === i ? "🎧 " : ch ? "⚔️ " + esc(G.players[ch.team].name) + " · " : ""}${gapLabel(cards, i)}</button>`;
     }
     if (i < cards.length) {
@@ -731,26 +1046,41 @@ function viewGame() {
         <div class="t"><b>${esc(c.film)}</b><span>${esc(c.composer)}</span></div></div>`;
     }
   }
-  const chals = G.chals || [];
-  const canChal = ph === "listen" && G.gap != null && G.picking == null && votersLeft().length > 0 && chals.length < cards.length;
-  let actions;
-  if (rev) actions = `<button class="btn ${G.bonus ? "" : "sec"}" id="bonus" style="font-size:15px;padding:12px">${G.bonus
-      ? `✓ +1 🪙 pour ${esc(p.name)} (toucher pour annuler)` : "🪙 Film et compositeur trouvés : +1 jeton"}</button>
-    <button class="btn" id="next">Passer à ${esc(G.players[(G.turn + 1) % G.players.length].name)} →</button>`;
-  else if (G.picking != null) actions = `<button class="btn sec" id="chalcancel">Annuler le vote de ${esc(G.players[G.picking].name)}</button>`;
-  else actions = `<div class="row">
+  const freeGap = chals.length + 1 < cards.length + 1;
+  let actions, hint = "";
+  if (rev) {
+    actions = active
+      ? `<button class="btn ${G.bonus ? "" : "sec"}" id="bonus" style="font-size:15px;padding:12px">${G.bonus
+          ? `✓ +1 🪙 pour ${esc(p.name)} (toucher pour annuler)` : "🪙 Film et compositeur trouvés : +1 jeton"}</button>
+        <button class="btn" id="next">Passer à ${esc(G.players[(G.turn + 1) % G.players.length].name)} →</button>`
+      : `<button class="btn sec" disabled>En attente de ${esc(p.name)}…</button>`;
+  } else if (pickTeam != null) {
+    actions = `<button class="btn sec" id="chalcancel">Annuler le vote</button>`;
+    hint = `<b>${esc(G.players[pickTeam].name)}</b> : touche une case libre où tu crois que va le film`;
+  } else if (active) {
+    const canChal = !multi && ph === "listen" && G.gap != null && votersLeft().length > 0 && freeGap;
+    actions = `<div class="row">
       ${canChal ? `<button class="btn sec" id="chal" style="flex:0 0 38%">⚔️ Voter</button>` : ""}
-      ${chals.length && !canChal ? `<button class="btn sec" id="chalclear" style="flex:0 0 38%">✕ Annuler les votes</button>` : ""}
+      ${!multi && chals.length && !canChal ? `<button class="btn sec" id="chalclear" style="flex:0 0 38%">✕ Annuler les votes</button>` : ""}
       <button class="btn" id="validate" ${G.gap == null || ph === "ready" ? "disabled" : ""}>Valider</button></div>`;
-  let hint = "";
-  if (G.picking != null) hint = `<b>${esc(G.players[G.picking].name)}</b> : touche une case libre où tu crois que va le film`;
-  else if (chals.length && ph === "listen") hint = `⚔️ ${chals.length} vote${chals.length > 1 ? "s" : ""} · <a href="#" id="chalclear2" style="color:var(--muted)">annuler les votes</a>`;
-
+    if (chals.length && ph === "listen") hint = `⚔️ ${chals.length} vote${chals.length > 1 ? "s" : ""}` +
+      (multi ? "" : ` · <a href="#" id="chalclear2" style="color:var(--muted)">annuler les votes</a>`);
+  } else {
+    const myVote = chals.find(c => c.team === me), tok = mine.tokens || 0;
+    if (myVote) actions = `<button class="btn sec" id="unvote">✕ Retirer mon vote (${esc(gapLabel(cards, myVote.gap))})</button>`;
+    else if (ph !== "listen") actions = `<button class="btn sec" disabled>En attente de la musique…</button>`;
+    else if (G.gap == null) actions = `<button class="btn sec" disabled>En attente du choix de ${esc(p.name)}…</button>`;
+    else if (!tok) actions = `<button class="btn sec" disabled>Plus de jeton pour voter</button>`;
+    else if (!freeGap) actions = `<button class="btn sec" disabled>Plus de case libre pour voter</button>`;
+    else actions = `<button class="btn" id="myvote">⚔️ Voter contre ${esc(p.name)} (1 🪙)</button>`;
+    if (chals.length && ph === "listen") hint = `⚔️ ${chals.length} vote${chals.length > 1 ? "s" : ""}`;
+  }
   return `<div class="screen">
-    <div class="top"><div><div class="row" style="gap:10px"><span class="teambadge">${esc(p.name)}</span>
-        <span class="mytok">${p.tokens || 0} 🪙</span></div>
-      <div class="stats" style="margin-top:6px">${p.cards.length}/${G.target} cartes</div></div>
+    <div class="top"><div><div class="row" style="gap:10px"><span class="teambadge">${esc(mine.name)}</span>
+        <span class="mytok">${mine.tokens || 0} 🪙</span></div>
+      <div class="stats" style="margin-top:6px">${mine.cards.length}/${G.target} cartes${multi ? ` · <span id="netdot" class="netdot ${netOnline ? "on" : ""}"></span>` : ""}</div></div>
       <button class="iconbtn" id="menu" aria-label="Menu">☰</button></div>
+    ${multi && !active ? `<div class="turnbar">🎧 Au tour de <b>${esc(p.name)}</b> · sa frise ci-dessous</div>` : ""}
     ${mystery}
     <div class="status" id="status">${esc(statusMsg)}</div>
     ${hint ? `<div class="hint">${hint}</div>` : ""}
@@ -762,9 +1092,6 @@ function viewGame() {
 let tlScroll = 0;
 function bindGame() {
   const tl = $("#tl"), ph = G.phase;
-  if (!Array.isArray(G.chals)) G.chals = [];
-  if (G.picking === false || G.picking === undefined) G.picking = null;
-  // garder la position de défilement de la frise entre deux rendus
   if (ph === "revealed") {
     const nc = tl.querySelector(".tcard.new");
     if (nc) tl.scrollTop = nc.offsetTop - tl.clientHeight / 2 + nc.offsetHeight / 2; else tl.scrollTop = tlScroll;
@@ -772,41 +1099,38 @@ function bindGame() {
   tl.addEventListener("scroll", () => { tlScroll = tl.scrollTop; }, { passive: true });
 
   $("#menu").onclick = openMenu;
-  if (ph === "ready") {
-    $("#play").onclick = () => { G.phase = "listen"; save(); render(); playCurrent(); };
-  } else if (ph === "listen") {
-    $("#replay").onclick = playCurrent;
-    $("#pause").onclick = () => { pause(); setStatus("En pause"); };
-    $("#devbtn") && ($("#devbtn").onclick = chooseDevice);
-    tl.querySelectorAll(".gap").forEach(g => g.onclick = () => {
-      const i = +g.dataset.g;
-      if (G.picking != null) {
-        if (i === G.gap) { toast("Case déjà choisie par " + cur().name + "."); return; }
-        const taken = G.chals.find(c => c.gap === i);
-        if (taken) { toast("Case déjà votée par " + G.players[taken.team].name + "."); return; }
-        G.chals.push({ team: G.picking, gap: i }); G.picking = null;
-      } else {
-        if (G.chals.some(c => c.gap === i)) { toast("Cette case a déjà un vote."); return; }
-        G.gap = i;
-      }
-      save(); render();
-    });
-    $("#validate") && ($("#validate").onclick = validate);
-    $("#chal") && ($("#chal").onclick = startChallenge);
-    $("#chalcancel") && ($("#chalcancel").onclick = () => { G.picking = null; save(); render(); });
-    const clear = e => { if (e) e.preventDefault(); G.chals = []; G.picking = null; save(); render(); };
-    $("#chalclear") && ($("#chalclear").onclick = () => clear());
-    $("#chalclear2") && ($("#chalclear2").onclick = clear);
-  } else {
-    $("#next").onclick = nextTurn;
-    $("#revcard") && ($("#revcard").onclick = showResult);
-    $("#bonus").onclick = () => {
-      const pl = cur();
-      if (G.bonus) { pl.tokens = Math.max(0, (pl.tokens || 0) - 1); G.bonus = false; }
-      else { pl.tokens = (pl.tokens || 0) + 1; G.bonus = true; if (navigator.vibrate) navigator.vibrate(40); }
-      save(); render();
-    };
-  }
+  $("#play") && ($("#play").onclick = () => { dispatch({ t: "play" }); playCurrent(); });
+  $("#replay") && ($("#replay").onclick = playCurrent);
+  $("#pause") && ($("#pause").onclick = () => { pause(); });
+  $("#devbtn") && ($("#devbtn").onclick = chooseDevice);
+  tl.querySelectorAll(".gap").forEach(g => g.onclick = () => {
+    const i = +g.dataset.g;
+    if (pickTeam != null) {
+      if (i === G.gap) { toast("Case déjà choisie par " + cur().name + "."); return; }
+      const taken = G.chals.find(c => c.gap === i);
+      if (taken) { toast("Case déjà votée par " + G.players[taken.team].name + "."); return; }
+      const team = pickTeam; pickTeam = null;
+      dispatch({ t: "vote", team, gap: i });
+      if (isGuest()) render();
+    } else {
+      if (G.chals.some(c => c.gap === i)) { toast("Cette case a déjà un vote."); return; }
+      dispatch({ t: "gap", i });
+    }
+  });
+  $("#validate") && ($("#validate").onclick = () => {
+    if (pickTeam != null) { toast("Termine le vote en cours ou annule-le."); return; }
+    dispatch({ t: "validate" });
+  });
+  $("#chal") && ($("#chal").onclick = startChallenge);
+  $("#myvote") && ($("#myvote").onclick = () => { pickTeam = myTeam(); render(); });
+  $("#unvote") && ($("#unvote").onclick = () => dispatch({ t: "unvote" }));
+  $("#chalcancel") && ($("#chalcancel").onclick = () => { pickTeam = null; render(); });
+  const clear = e => { if (e) e.preventDefault(); dispatch({ t: "clearvotes" }); };
+  $("#chalclear") && ($("#chalclear").onclick = () => clear());
+  $("#chalclear2") && ($("#chalclear2").onclick = clear);
+  $("#next") && ($("#next").onclick = () => dispatch({ t: "next" }));
+  $("#revcard") && ($("#revcard").onclick = showResult);
+  $("#bonus") && ($("#bonus").onclick = () => { if (!G.bonus && navigator.vibrate) navigator.vibrate(40); dispatch({ t: "bonus" }); });
 }
 async function playCurrent() {
   const s = SONG[G.card];
@@ -834,7 +1158,7 @@ async function playCurrent() {
 }
 function offerFreeSkip() {
   sheet(`<h2>Morceau introuvable</h2><p class="muted">Ce morceau n'a pas été trouvé sur Spotify. On en tire un autre pour la même équipe.</p>
-    <button class="btn" id="s_ok">Tirer une autre musique</button>`, { s_ok: () => { closeSheet(); drawCard(); G.phase = "listen"; save(); render(); playCurrent(); } });
+    <button class="btn" id="s_ok">Tirer une autre musique</button>`, { s_ok: () => { closeSheet(); wantPlayNext = true; dispatch({ t: "redraw" }); } });
 }
 async function noDeviceHelp() {
   let devs = [];
@@ -906,38 +1230,8 @@ function startChallenge() {
     }).join("")}
     <button class="btn ghost" id="t_close">Annuler</button>`, { t_close: closeSheet });
   document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => {
-    closeSheet(); G.picking = +b.dataset.t; save(); render();
+    closeSheet(); pickTeam = +b.dataset.t; render();
   });
-}
-const gapOk = (cards, i, y) => (!cards[i - 1] || cards[i - 1].year <= y) && (!cards[i] || y <= cards[i].year);
-function validate() {
-  const p = cur(), cards = sortedCards(p), s = SONG[G.card], i = G.gap;
-  if (G.picking != null) { toast("Termine le vote en cours ou annule-le."); return; }
-  const ok = gapOk(cards, i, s.year);
-  let hint = "";
-  if (!ok) {
-    const j = cards.findIndex(c => c.year > s.year);
-    const a = j === -1 ? cards[cards.length - 1] : cards[j - 1], b = j === -1 ? null : cards[j];
-    hint = !a ? `il fallait la placer avant ${b.year}` : !b ? `il fallait la placer après ${a.year}` : `il fallait la placer entre ${a.year} et ${b.year}`;
-  }
-  const lines = [ok ? `✓ ${p.name} a raison : carte gagnée !` : `✗ ${p.name} s'est trompée — ${hint}`];
-  if (ok) p.cards.push(s.id);
-  let won = ok;
-  for (const ch of (G.chals || [])) {
-    const c = G.players[ch.team], cOk = gapOk(cards, ch.gap, s.year);
-    if (cOk && !won) {
-      won = true; c.cards.push(s.id); c.tokens = Math.max(0, (c.tokens || 0) - 1);
-      lines.push(`✓ ${c.name} avait raison : elle remporte la carte (et utilise son jeton).`);
-    } else if (cOk) {
-      lines.push(`= ${c.name} avait aussi une bonne case : elle garde son jeton.`);
-    } else {
-      c.tokens = Math.max(0, (c.tokens || 0) - 1); p.tokens = (p.tokens || 0) + 1;
-      lines.push(`✗ Le vote de ${c.name} était faux : son jeton passe à ${p.name} 🪙`);
-    }
-  }
-  G.phase = "revealed"; G.result = { ok, hint, lines };
-  save(); render(); showResult();
-  if (navigator.vibrate) navigator.vibrate(ok ? 60 : [40, 60, 40]);
 }
 function exportSongs() {
   const c = LS.get("ids2", {}) || {};
@@ -974,16 +1268,6 @@ function showResult() {
     <div class="rlines">${lines}</div>
     <button class="btn" id="r_close">Fermer</button>`, { r_close: closeSheet });
 }
-function nextTurn() {
-  const order = [G.turn, ...G.players.map((_, i) => i).filter(i => i !== G.turn)];
-  const w = order.find(i => G.players[i].cards.length >= G.target);
-  if (w != null) { G.winner = w; save(); pause(); go("win"); return; }
-  G.turn = (G.turn + 1) % G.players.length;
-  pause();
-  drawCard(); save(); statusMsg = ""; tlScroll = 0; render();
-  toast("À " + cur().name + " de jouer !");
-}
-
 /* ---------- Menu & feuilles ---------- */
 function sheet(html, handlers = {}) {
   closeSheet();
@@ -995,16 +1279,21 @@ function sheet(html, handlers = {}) {
 }
 function closeSheet() { const o = $("#ov"); if (o) o.remove(); }
 function openMenu() {
-  const rows = G.players.map((pl, i) => `<div class="score"><span>${i === G.turn ? "🎧 " : ""}<b>${esc(pl.name)}</b></span>
+  const rows = G.players.map((pl, i) => `<div class="score"><span>${i === G.turn ? "🎧 " : ""}<b>${esc(pl.name)}</b>${G.multi && i === myTeam() ? ` <span class="muted">(toi)</span>` : ""}</span>
     <span>${pl.cards.length}/${G.target} cartes · ${pl.tokens || 0} 🪙</span></div>`).join("");
   sheet(`<h2>Scores</h2>${rows}
     <p class="muted">Niveau ${LEVELS[G.level || "moyen"]} · Période : ${G.yMin || YEAR_MIN} – ${G.yMax || YEAR_MAX} · ${G.deck.length} musiques restantes dans la pioche.</p>
+    ${G.multi ? `<p class="muted">Partie à plusieurs · code <b>${esc(NET ? NET.code : "")}</b></p>` : ""}
     <button class="btn" id="m_close">Reprendre</button>
     <button class="btn sec" id="m_set">⚙️ Réglages</button>
-    <button class="btn ghost" id="m_quit">Abandonner la partie</button>`, {
+    <button class="btn ghost" id="m_quit">${!G.multi ? "Abandonner la partie" : isHost() ? "Terminer la partie pour tous" : "Quitter la partie"}</button>`, {
     m_close: closeSheet,
     m_set: () => { closeSheet(); go("settings"); },
-    m_quit: () => { if (confirm("Abandonner la partie en cours ?")) { closeSheet(); pause(); G = null; LS.del("game"); go("home"); } }
+    m_quit: () => {
+      if (!G.multi) { if (confirm("Abandonner la partie en cours ?")) { closeSheet(); pause(); G = null; LS.del("game"); go("home"); } return; }
+      if (isHost()) { if (confirm("Terminer la partie pour toutes les équipes ?")) { dispatch({ t: "end" }); setTimeout(() => leaveMulti(), 400); } return; }
+      if (confirm("Quitter la partie ? Ton équipe ne pourra plus jouer.")) leaveMulti();
+    }
   });
 }
 
@@ -1015,17 +1304,26 @@ function viewWin() {
     .map(pl => `<div class="score"><b>${esc(pl.name)}</b><span>${pl.cards.length} cartes</span></div>`).join("");
   return `<div class="screen win"><div class="trophy">🏆</div><h1>${esc(w.name)}</h1><p class="muted">remporte la partie !</p>
     <div class="content"><div class="box" style="text-align:left">${ranking}</div></div>
-    <div class="footer"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="home">Accueil</button></div></div>`;
+    <div class="footer">${!G.multi
+      ? `<button class="btn" id="again">Rejouer</button><button class="btn sec" id="home">Accueil</button>`
+      : isHost() ? `<button class="btn" id="again">Rejouer avec les mêmes équipes</button><button class="btn sec" id="home">Terminer</button>`
+      : `<button class="btn sec" disabled>En attente du créateur…</button><button class="btn ghost" id="home">Quitter</button>`}</div></div>`;
 }
 function bindWin() {
-  $("#again").onclick = () => { G = null; LS.del("game"); go("setup"); };
-  $("#home").onclick = () => { G = null; LS.del("game"); go("home"); };
+  if (!G.multi) {
+    $("#again").onclick = () => { G = null; LS.del("game"); go("setup"); };
+    $("#home").onclick = () => { G = null; LS.del("game"); go("home"); };
+    return;
+  }
+  $("#again") && ($("#again").onclick = () => { G = null; LS.del("game"); LS.set("lobby", LOBBY); publishState(); go("lobby"); });
+  $("#home").onclick = () => leaveMulti();
 }
 
 /* ================= Démarrage ================= */
 (async () => {
   await handleRedirect();
-  render();
+  if (NET) { if (isGuest()) G = null; screen = G ? "game" : "lobby"; render(); netStart(); }
+  else render();
 })();
 </script>
 <script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
