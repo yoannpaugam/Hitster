@@ -137,6 +137,7 @@ const SONG = SONGS.map((s, i) => ({ id: i, film: s[0], year: s[1], composer: s[2
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
+const APP_VERSION = "3 (diagnostic)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -269,6 +270,59 @@ async function playUri(uri) {
 async function pause() { try { await api("/me/player/pause", { method: "PUT" }); } catch {} }
 async function resume() { try { await api("/me/player/play", { method: "PUT" }); } catch {} }
 
+
+async function runDiagnostic() {
+  const lines = [];
+  const add = (ok, t) => lines.push((ok ? "✅ " : "❌ ") + t);
+  const ua = navigator.userAgent;
+  lines.push("Appareil : " + (/iPhone|iPad/.test(ua) ? "iPhone/iPad" : /Android/.test(ua) ? "Android" : "autre") +
+    (window.navigator.standalone ? " (icône écran d'accueil)" : ""));
+  lines.push("Version du jeu : " + APP_VERSION);
+  lines.push("Client ID : " + clientId().slice(0, 6) + "…");
+  lines.push("Redirect URI : " + REDIRECT_URI);
+  const tok = await getToken();
+  add(!!tok, tok ? "Connecté à Spotify" : "Pas connecté (ou session expirée) → Réglages → Connexion");
+  if (!tok) return lines.join("\n");
+  const call = async (label, path, opts) => {
+    try {
+      const r = await fetch("https://api.spotify.com/v1" + path, { ...opts, headers: { Authorization: "Bearer " + tok, "Content-Type": "application/json" } });
+      let txt = ""; try { txt = await r.text(); } catch {}
+      let j = null; try { j = JSON.parse(txt); } catch {}
+      return { r, j, txt };
+    } catch (e) { return { r: { ok: false, status: "réseau" }, j: null, txt: String(e) }; }
+  };
+  const errOf = x => x.j && x.j.error ? (x.j.error.reason || x.j.error.message || "") : (x.txt || "").slice(0, 120);
+  let x = await call("me", "/me");
+  add(x.r.ok, "Compte : HTTP " + x.r.status + (x.r.ok ? (x.j && x.j.product ? " · abonnement " + x.j.product : "") : " · " + errOf(x)));
+  x = await call("devices", "/me/player/devices");
+  const devs = (x.j && x.j.devices) || [];
+  add(x.r.ok && devs.length > 0, "Appareils : HTTP " + x.r.status + " · " +
+    (devs.length ? devs.map(d => d.name + " [" + d.type + (d.is_active ? ", actif" : "") + (d.is_restricted ? ", bloqué" : "") + "]").join(", ") : (x.r.ok ? "aucun appareil visible" : errOf(x))));
+  x = await call("player", "/me/player");
+  add(x.r.ok, "Lecteur : HTTP " + x.r.status + (x.j && x.j.device ? " · " + x.j.device.name + (x.j.is_playing ? " (en lecture)" : " (en pause)") : x.r.status === 204 ? " · rien en cours" : ""));
+  x = await call("search", "/search?type=track&limit=1&q=" + encodeURIComponent("Gabriel's Oboe Morricone"));
+  const tr = x.j && x.j.tracks && x.j.tracks.items && x.j.tracks.items[0];
+  add(x.r.ok && !!tr, "Recherche : HTTP " + x.r.status + (tr ? " · trouvé " + tr.name : " · " + errOf(x)));
+  if (tr) {
+    const dev = devs.find(d => d.is_active) || devs[0];
+    x = await call("play", "/me/player/play" + (dev ? "?device_id=" + encodeURIComponent(dev.id) : ""), { method: "PUT", body: JSON.stringify({ uris: [tr.uri] }) });
+    add(x.r.ok, "Test de lecture" + (dev ? " sur " + dev.name : "") + " : HTTP " + x.r.status + (x.r.ok ? " · ça joue !" : " · " + errOf(x)));
+  }
+  return lines.join("\n");
+}
+function showDiagnostic() {
+  sheet(`<h2>Diagnostic Spotify</h2><p class="muted">Ouvre Spotify et laisse un titre jouer, puis reviens ici.</p>
+    <div class="code" id="diagout" style="white-space:pre-wrap">Test en cours…</div>
+    <button class="btn sec" id="d_copy">Copier le résultat</button>
+    <button class="btn" id="d_again">Relancer</button>
+    <button class="btn ghost" id="d_close">Fermer</button>`, {
+    d_close: closeSheet,
+    d_again: async () => { $("#diagout").textContent = "Test en cours…"; $("#diagout").textContent = await runDiagnostic(); },
+    d_copy: async () => { try { await navigator.clipboard.writeText($("#diagout").textContent); toast("Copié !"); } catch { toast("Fais une capture d'écran."); } }
+  });
+  runDiagnostic().then(t => { const el = $("#diagout"); if (el) el.textContent = t; });
+}
+
 /* ================= État du jeu ================= */
 let G = LS.get("game", null);
 const save = () => LS.set("game", G);
@@ -331,6 +385,8 @@ function viewSettings() {
       <div class="row" style="justify-content:space-between"><span class="pill"><span class="dot ${isLogged() ? "on" : ""}"></span>${isLogged() ? "Connecté" : "Non connecté"}</span>
       ${isLogged() ? `<button class="btn sec small" id="logout">Déconnexion</button>` : `<button class="btn small" id="login">Connexion</button>`}</div>
     </div>
+    <button class="btn" id="diag">🩺 Diagnostic Spotify</button>
+    <p class="muted">Version du jeu : ${APP_VERSION}</p>
     <label>Appareil de lecture</label>
     <div class="row"><select id="dev"><option value="">Automatique (appareil actif)</option></select>
       <button class="btn sec small" id="loaddev">↻</button></div>
@@ -352,6 +408,7 @@ function bindSettings() {
   $("#copy").onclick = async () => { try { await navigator.clipboard.writeText(REDIRECT_URI); toast("Copié !"); } catch { toast("Sélectionne et copie le texte."); } };
   $("#login") && ($("#login").onclick = () => { LS.set("clientId", $("#cid").value.trim()); login(); });
   $("#logout") && ($("#logout").onclick = logout);
+  $("#diag").onclick = showDiagnostic;
   $("#startAt").onchange = e => LS.set("startAt", +e.target.value);
   const sel = $("#dev");
   const pref = LS.get("device", "");
@@ -526,10 +583,21 @@ async function noDeviceHelp() {
     <a class="btn sec" href="spotify:" style="text-align:center;text-decoration:none">Ouvrir Spotify</a>
     ${list}
     <button class="btn" id="s_retry">Réessayer</button>
-    <p class="muted" style="font-size:12px">Détail technique : ${esc(lastPlayError || "aucun appareil")}</p>`, { s_retry: () => { closeSheet(); playCurrent(); } });
+    <button class="btn sec" id="s_diag">🩺 Diagnostic</button>
+    <button class="btn ghost" id="s_fallback">Mode secours : ouvrir la musique dans Spotify</button>
+    <p class="muted" style="font-size:12px">Détail technique : ${esc(lastPlayError || "aucun appareil")}</p>`, { s_retry: () => { closeSheet(); playCurrent(); }, s_diag: showDiagnostic, s_fallback: openFallback });
   document.querySelectorAll("[data-dev]").forEach(b => b.onclick = () => {
     LS.set("device", b.dataset.dev); LS.set("deviceName", b.dataset.name); closeSheet(); playCurrent();
   });
+}
+
+async function openFallback() {
+  const s = SONG[G.card];
+  let uri = null; try { uri = await resolveSong(s); } catch {}
+  if (!uri) { toast("Morceau introuvable."); return; }
+  if (!confirm("Le titre sera visible dans Spotify. Demande à quelqu'un d'une autre équipe de lancer la musique, ou ne regarde pas l'écran. Continuer ?")) return;
+  closeSheet();
+  location.href = "https://open.spotify.com/track/" + uri.split(":").pop();
 }
 
 function validate() {
