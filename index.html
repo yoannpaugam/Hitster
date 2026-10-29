@@ -189,7 +189,8 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
   <div class="mask"><b>🎵 Musique mystère</b><span>Si rien ne joue, touche ▶ juste ici →</span></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=18"></script>
+<script src="songs.js?v=25"></script>
+<script src="levels.js?v=25"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -213,19 +214,32 @@ const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
 // [film, année, compositeur, morceau, titre original, niveau "F"/"M", id Spotify optionnel]
-const SONG = SONGS.map((s, i) => ({ id: i, film: s[0], year: s[1], composer: s[2], track: s[3], orig: s[4] || s[0],
-  level: s[5] === "F" ? "facile" : "moyen", sid: s[6] || "" }));
-if (!SONG.some(s => s.level === "facile")) setTimeout(() => toast("Liste des musiques pas à jour (songs.js) : recharge la page."), 800);
+// songs.js donne les morceaux (et leurs identifiants Spotify) ; levels.js donne les niveaux et ajoute les séries
 const songKey = s => s.orig + "|" + s.track;
+const rowKey = r => (r[4] || r[0]) + "|" + r[3];
+const HAS_LEVELS = typeof NIVEAUX !== "undefined";
+const SERIES_ROWS = typeof SERIES !== "undefined" ? SERIES : [];
+const SERIES_KEYS = new Set(SERIES_ROWS.map(rowKey));
+const ALL = SONGS.slice();
+{ const seen = new Set(ALL.map(rowKey)); SERIES_ROWS.forEach(r => { if (!seen.has(rowKey(r))) ALL.push(r); }); }
+const LVL = { F: "facile", M: "moyen", D: "difficile" };
+const SONG = ALL.map((r, i) => {
+  const key = rowKey(r), series = SERIES_KEYS.has(key);
+  const sr = series ? SERIES_ROWS.find(x => rowKey(x) === key) : null;
+  const code = (HAS_LEVELS && NIVEAUX[key]) || (sr && sr[5]) || (HAS_LEVELS ? "D" : r[5] === "F" ? "F" : "M");
+  return { id: i, film: r[0], year: r[1], composer: r[2], track: r[3], orig: r[4] || r[0], level: LVL[code] || "moyen", series, sid: r[6] || "" };
+});
+if (!HAS_LEVELS) setTimeout(() => toast("Fichier levels.js absent : dépose-le sur GitHub pour les nouveaux niveaux."), 900);
 // Le jeu peut tourner sans connexion Spotify si le morceau a déjà son identifiant dans songs.js (lecteur intégré)
-const needsLogin = s => playMode() === "connect" || !(s.sid || (LS.get("ids2", {}) || {})[songKey(s)]);
+const sharedUri = s => (typeof G !== "undefined" && G && G.card === s.id && G.curUri) || null;
+const needsLogin = s => playMode() === "connect" || !(s.sid || (LS.get("ids2", {}) || {})[songKey(s)] || sharedUri(s));
 const allReady = () => playMode() === "embed" && SONG.every(s => s.sid);
 const LEVELS = { facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
 
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "24 (texte réponse)";
+const APP_VERSION = "25 (niveaux + séries)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -296,6 +310,7 @@ async function api(path, opts = {}, tries = 0) {
 function lastName(c) { const first = c.split(/&| et | and |,/)[0].trim().split(" "); return first[first.length - 1]; }
 async function resolveSong(s) {
   if (s.sid) return "spotify:track:" + s.sid;
+  if (sharedUri(s)) return sharedUri(s);
   const cache = LS.get("ids2", {}), key = songKey(s);
   if (cache[key]) return cache[key];
   const ln = norm(lastName(s.composer)), tn = norm(s.track), fn = norm(s.orig);
@@ -415,7 +430,7 @@ async function getEmbed(uri) {
   });
 }
 let lastLoadedUri = null;
-const knownUri = s => s.sid ? "spotify:track:" + s.sid : ((LS.get("ids2", {}) || {})[songKey(s)] || null);
+const knownUri = s => s.sid ? "spotify:track:" + s.sid : ((LS.get("ids2", {}) || {})[songKey(s)] || sharedUri(s) || null);
 // Charge (sans lancer) le morceau de la carte en cours dans le lecteur : la bonne musique est prête et jamais celle d'avant
 function ensureEmbedTrack() {
   if (playMode() !== "embed" || !EmbedCtl || !G || G.card == null) return;
@@ -501,18 +516,24 @@ const save = () => LS.set("game", G);
 const cur = () => G.players[G.turn];
 
 const YEAR_MIN = Math.min(...SONG.map(s => s.year)), YEAR_MAX = Math.max(...SONG.map(s => s.year));
-const songsIn = (a, b, lvl = "moyen") => SONG.filter(s => s.year >= a && s.year <= b && (lvl === "difficile" || s.level === lvl));
+const songsIn = (a, b, lvl = "moyen") => SONG.filter(s => s.year >= a && s.year <= b && (lvl === "difficile" ? !s.series : s.level === lvl));
+// Morceaux réellement jouables ici (sans connexion, seuls ceux qui ont un identifiant)
+const playable = s => playMode() !== "embed" || isLogged() || !!knownUri(s);
+function deckFor(a, b, lvl, need = 0) {
+  const all = songsIn(a, b, lvl), ok = all.filter(playable);
+  return (ok.length >= need ? ok : all).map(s => s.id);
+}
 const opt = () => ({ level: LS.get("level", "facile"), yMin: LS.get("yMin", YEAR_MIN), yMax: LS.get("yMax", YEAR_MAX) });
 function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moyen", tokens = 3, names = []) {
-  const deck = shuffle(songsIn(yMin, yMax, level).map(s => s.id));
+  const deck = shuffle(deckFor(yMin, yMax, level, nTeams + 5));
   const players = Array.from({ length: nTeams }, (_, i) => ({ name: cleanName(names[i]) || "Équipe " + (i + 1), cards: [deck.pop()], tokens }));
   G = { players, target, deck, yMin, yMax, level, turn: 0, card: null, phase: "ready", gap: null, result: null, winner: null };
   drawCard(); save();
 }
 function drawCard() {
-  if (!G.deck.length) { G.deck = shuffle(songsIn(G.yMin || YEAR_MIN, G.yMax || YEAR_MAX, G.level || "moyen").map(s => s.id).filter(id => !G.players.some(p => p.cards.includes(id)))); }
+  if (!G.deck.length) { G.deck = shuffle(deckFor(G.yMin || YEAR_MIN, G.yMax || YEAR_MAX, G.level || "moyen").filter(id => !G.players.some(p => p.cards.includes(id)))); }
   // phase : "ready" (pas encore écouté) → "listen" (musique lancée, choix de la case) → "revealed"
-  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.bonus = false; G.answer = null;
+  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.bonus = false; G.answer = null; G.curUri = null;
 }
 const cleanName = n => String(n || "").replace(/\s+/g, " ").trim().slice(0, 18);
 const sortedCards = p => p.cards.map(id => SONG[id]).sort((a, b) => a.year - b.year);
@@ -669,9 +690,9 @@ function viewOptions() {
       <button class="btn ${lvl === "difficile" ? "" : "sec"}" data-lvl="difficile">🔥 Difficile<br><span style="font-weight:500;font-size:13px">${cnt("difficile")} musiques</span></button>
     </div>
     <p class="muted">${({
-      facile: "Facile : uniquement les thèmes célèbres des films les plus connus (Star Wars, Gladiator, Forrest Gump, Le Parrain, Jurassic Park, Dune…).",
-      moyen: "Moyen : moins de blockbusters, et pour les grands films des morceaux moins évidents (ex. les funérailles de Padmé plutôt que le thème de Star Wars).",
-      difficile: "Difficile : toute la liste, y compris les films et compositeurs les plus confidentiels."
+      facile: "Facile : pour les cinéphiles occasionnels. Les thèmes célèbres des films les plus connus (grandes sagas, grands réalisateurs, surtout 1990–2025) et des génériques de séries cultes.",
+      moyen: "Moyen : des films connus mais moins de blockbusters, et pour les grands films des morceaux moins évidents (ex. les funérailles de Padmé plutôt que le thème de Star Wars). Plus quelques génériques de séries.",
+      difficile: "Difficile : toute la liste des films, y compris les plus anciens et les plus confidentiels (sans les séries)."
     })[lvl]}</p>
     <label>Période</label>
     <div class="box" style="margin-top:0">
@@ -1004,6 +1025,7 @@ function postState(prev) {
     }
   }
   if (G.phase !== "vote") pickTeam = null;
+  if (G.multi && !G.curUri && G.card != null && G.phase !== "revealed") shareUri();
   ensureEmbedTrack();
   if (["home", "lobby", "join", "setup"].includes(screen)) screen = "game";
   render();
@@ -1066,6 +1088,7 @@ function applyAction(a) {
       drawCard(); return true;
     }
     case "end": if (multi && a.by !== 0) return false; G.ended = true; return true;
+    case "uri": if (a.card !== G.card || !a.uri || G.curUri === a.uri) return false; G.curUri = a.uri; return true;
   }
   return false;
 }
@@ -1150,6 +1173,17 @@ function resolveTurn() {
   G.phase = "revealed"; G.result = { ok, hint, lines, wonBy }; G.resultSeq = (G.resultSeq || 0) + 1;
 }
 
+// À plusieurs : le premier téléphone qui connaît le morceau le partage, pour que tous jouent le même
+let sharingCard = null;
+function shareUri() {
+  const c = G.card, s = SONG[c];
+  if (sharingCard === c) return;
+  const known = knownUri(s);
+  if (known) { sharingCard = c; dispatch({ t: "uri", card: c, uri: known }); return; }
+  if (!isLogged()) return;
+  sharingCard = c;
+  resolveSong(s).then(u => { if (u && G && G.card === c && !G.curUri) dispatch({ t: "uri", card: c, uri: u }); }).catch(() => {});
+}
 /* ---------- Jeu ---------- */
 let statusMsg = "";
 function setStatus(m) { statusMsg = m; const el = $("#status"); if (el) el.textContent = m; }
@@ -1259,7 +1293,7 @@ function openAnswer() {
   sheet(`<h2>Ta réponse</h2>
     <p class="muted">Période choisie : <b style="color:var(--gold)">${esc(gapLabel(cards, G.gap))}</b><br>
       Propose le film et le compositeur. Si les deux sont justes, gagne 1 🪙 de vote.</p>
-    <label>🎬 Film</label><input id="a_film" maxlength="80" autocomplete="off" placeholder="ex. Gladiator" value="${esc(draft.film)}">
+    <label>🎬 Film ou série</label><input id="a_film" maxlength="80" autocomplete="off" placeholder="ex. Gladiator" value="${esc(draft.film)}">
     <label>🎼 Compositeur</label><input id="a_comp" maxlength="80" autocomplete="off" placeholder="ex. Hans Zimmer" value="${esc(draft.composer)}">
     <button class="btn" id="a_ok" style="margin-top:14px">Valider ma réponse</button>
     <button class="btn ghost" id="a_back">Changer de période</button>`, {
@@ -1349,6 +1383,7 @@ async function playCurrent() {
   try {
     const uri = await resolveSong(s);
     if (G.card !== s.id) return;
+    if (uri && G.multi && !G.curUri) dispatch({ t: "uri", card: s.id, uri });
     if (!uri) { setStatus("Morceau introuvable sur Spotify — on en tire un autre."); offerFreeSkip(); return; }
     if (playMode() === "embed") {
       setStatus("");
@@ -1432,15 +1467,16 @@ function exportSongs() {
   const c = LS.get("ids2", {}) || {};
   let found = 0;
   const rows = SONG.map(s => {
-    const raw = SONGS[s.id].slice(0, 6);
-    while (raw.length < 6) raw.push(raw.length === 4 ? s.orig : raw.length === 5 ? (s.level === "facile" ? "F" : "M") : "");
+    const raw = ALL[s.id].slice(0, 5);
+    while (raw.length < 5) raw.push(s.orig);
+    raw.push(s.level === "facile" ? "F" : s.level === "moyen" ? "M" : "D");
     const id = s.sid || (c[songKey(s)] || "").split(":").pop();
     if (id) { found++; raw.push(id); }
     return "  " + JSON.stringify(raw).replace(/","/g, '", "').replace(/",(\d)/g, '", $1').replace(/(\d),"/g, '$1, "') + ",";
   });
   const txt = `// Liste des compositions de films.
 // Format : [Titre affiché, Année de sortie du film, Compositeur, Morceau, Titre original, Niveau, ID Spotify]
-// Niveau : "F" = Facile · "M" = Moyen (le niveau Difficile reprend toute la liste)
+// Niveau : indicatif, c'est levels.js qui fait foi (F = Facile, M = Moyen, D = Difficile)
 // Pour corriger un morceau : remplace son ID (lien https://open.spotify.com/track/XXXXXXXX -> "XXXXXXXX").
 // Règle : au maximum 2 morceaux par film.
 const SONGS = [
