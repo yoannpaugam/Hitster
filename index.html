@@ -167,6 +167,12 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
 .tcard.lost .y{color:var(--kotext)}
 .lostlab{display:block;color:var(--ko);font-size:12px;font-weight:700;margin-top:2px}
 #hlcard{cursor:pointer}
+.lvlgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.lvlgrid .btn{margin:0;padding:12px 4px;font-size:15px}
+.kidsans{font-family:var(--title);font-size:24px;font-weight:800;color:var(--gold2);line-height:1.15}
+.kfound{margin:8px 14px;padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid var(--line);font-weight:700}
+.kempty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px;color:var(--muted);padding:20px;min-height:200px}
+.kidchip{font-family:inherit;font-size:13px;color:var(--text)}
 /* Curseur de période */
 .range{position:relative;height:44px;margin:4px 6px 0}
 .range .track{position:absolute;left:0;right:0;top:19px;height:6px;border-radius:6px;background:var(--line)}
@@ -186,15 +192,23 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
 .themes button.on{border-color:var(--gold)}
 .sw{display:flex;gap:4px;margin-bottom:8px}.sw i{flex:1;height:22px;border-radius:6px;display:block}
 /* Lecteur intégré */
-#playerbar{position:fixed;left:16px;width:52px;top:-200px;height:46px;border-radius:12px;overflow:hidden;z-index:15;background:#000}
-/* Le lecteur Spotify fait 360 × 80 : on n'en laisse voir que le bouton lecture/pause (en bas à droite) */
-#playerbar iframe{position:absolute;right:0;top:-30px;border:0;width:360px !important;height:80px !important;max-width:none}
-#playerbar .mask{display:none !important;position:absolute;left:0;top:0;bottom:0;right:74px;background:var(--card);display:flex;flex-direction:column;
+/* Le lecteur Spotify reste invisible ; il ne s'affiche (titre masqué) que si le téléphone exige un appui direct dessus */
+#playerbar{position:fixed;left:0;bottom:0;width:300px;height:80px;opacity:0;pointer-events:none;z-index:-1;overflow:hidden;border-radius:12px;background:#000}
+#playerbar iframe{display:block;border:0;width:100%;height:80px}
+#playerbar.needtap.show{opacity:1;pointer-events:auto;z-index:15;border:1px solid var(--gold)}
+#playerbar.needtap .mask{display:flex}
+#playerbar .mask{display:none;position:absolute;left:0;top:0;bottom:0;right:74px;background:var(--card);display:flex;flex-direction:column;
   justify-content:center;padding:0 14px;font-size:14px;z-index:2}
 #playerbar .mask span{color:var(--gold);font-size:13px;margin-top:2px}
 #playerbar.revealed .mask{display:none}
-.embedslot{flex:none;width:58px;height:52px;border-radius:15px;padding:3px;
-  background:conic-gradient(var(--gold) calc(var(--p,0) * 1turn),var(--line) 0)}
+.pp{flex:none;width:52px;height:52px;border-radius:50%;border:0;padding:0;position:relative;background:rgba(255,255,255,.07);color:var(--text);cursor:pointer}
+.pp svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+.pp .arc{fill:none;stroke:var(--gold);stroke-width:3.5;stroke-linecap:round;stroke-dasharray:100;transition:stroke-dashoffset .35s linear}
+.pp .ic{position:absolute;left:50%;top:50%;width:0;height:0;transform:translate(-35%,-50%);border-style:solid;border-width:9px 0 9px 15px;border-color:transparent transparent transparent currentColor}
+.pp.playing .ic{width:14px;height:18px;border:0;transform:translate(-50%,-50%);background:linear-gradient(90deg,currentColor 0 5px,transparent 5px 9px,currentColor 9px 14px)}
+.pp.buf svg{animation:ppspin 1s linear infinite}
+.pp.buf .arc{stroke-dashoffset:72 !important;transition:none}
+@keyframes ppspin{from{transform:rotate(-90deg)}to{transform:rotate(270deg)}}
 .playrow{display:flex;align-items:center;gap:12px}
 .playrow .ctrl{flex:1}
 .playrow .muted{flex:1}
@@ -226,13 +240,13 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
 (function () { try { var t = JSON.parse(localStorage.getItem("ch_theme") || '"cine"'); if (t !== "cine") document.documentElement.dataset.theme = t; } catch (e) {} })();
 </script>
 <div id="app"></div>
-<div id="playerbar" hidden>
+<div id="playerbar">
   <div id="embed"></div>
-  <div class="mask"><b>🎵 Musique mystère</b><span>Si rien ne joue, touche ▶ juste ici →</span></div>
+  <div class="mask"><b>🎵 Musique mystère</b><span>Touche ▶ pour lancer la musique →</span></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=26"></script>
-<script src="levels.js?v=26"></script>
+<script src="songs.js?v=27"></script>
+<script src="levels.js?v=27"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -272,28 +286,32 @@ function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.fl
 const songKey = s => s.orig + "|" + s.track;
 const rowKey = r => (r[4] || r[0]) + "|" + r[3];
 const HAS_LEVELS = typeof NIVEAUX !== "undefined";
-const SERIES_ROWS = (typeof SERIES !== "undefined" ? SERIES : []).concat(typeof CHANSONS !== "undefined" ? CHANSONS : []);
-const SERIES_KEYS = new Set(SERIES_ROWS.map(rowKey));
+const KIDS_ROWS = typeof KIDS !== "undefined" ? KIDS : [];
+const KIDS_KEYS = new Set(KIDS_ROWS.map(r => (r[4] || r[0]) + "|" + r[3]));
+const SERIES_ROWS = (typeof SERIES !== "undefined" ? SERIES : []).concat(typeof CHANSONS !== "undefined" ? CHANSONS : [], KIDS_ROWS);
+// « extra » = séries, chansons et morceaux Kids qui ne sont pas des musiques de films de la liste (exclus du niveau Difficile)
+const SC_KEYS = new Set((typeof SERIES !== "undefined" ? SERIES : []).concat(typeof CHANSONS !== "undefined" ? CHANSONS : []).map(rowKey));
+const isExtra = key => SC_KEYS.has(key) || (KIDS_KEYS.has(key) && !(HAS_LEVELS && NIVEAUX[key]));
 const ALL = SONGS.slice();
-{ const seen = new Set(ALL.map(rowKey)); SERIES_ROWS.forEach(r => { if (!seen.has(rowKey(r))) ALL.push(r); }); }
-const LVL = { F: "facile", M: "moyen", D: "difficile" };
+{ const seen = new Set(ALL.map(rowKey)); SERIES_ROWS.forEach(r => { const k = rowKey(r); if (!seen.has(k)) { seen.add(k); ALL.push(r); } }); }
+const LVL = { F: "facile", M: "moyen", D: "difficile", K: "kids" };
 const SONG = ALL.map((r, i) => {
-  const key = rowKey(r), series = SERIES_KEYS.has(key);
+  const key = rowKey(r), series = isExtra(key);
   const sr = series ? SERIES_ROWS.find(x => rowKey(x) === key) : null;
   const code = (HAS_LEVELS && NIVEAUX[key]) || (sr && sr[5]) || (HAS_LEVELS ? "D" : r[5] === "F" ? "F" : "M");
-  return { id: i, film: r[0], year: r[1], composer: r[2], track: r[3], orig: r[4] || r[0], level: LVL[code] || "moyen", series, sid: r[6] || "" };
+  return { id: i, film: r[0], year: r[1], composer: r[2], track: r[3], orig: r[4] || r[0], level: LVL[code] || "moyen", series, kids: KIDS_KEYS.has(key), sid: r[6] || "" };
 });
 if (!HAS_LEVELS) setTimeout(() => toast("Fichier levels.js absent : dépose-le sur GitHub pour les nouveaux niveaux."), 900);
 // Le jeu peut tourner sans connexion Spotify si le morceau a déjà son identifiant dans songs.js (lecteur intégré)
 const sharedUri = s => (typeof G !== "undefined" && G && G.card === s.id && G.curUri) || null;
 const needsLogin = s => playMode() === "connect" || !(s.sid || (LS.get("ids2", {}) || {})[songKey(s)] || sharedUri(s));
 const allReady = () => playMode() === "embed" && SONG.every(s => s.sid);
-const LEVELS = { facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
+const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
 
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "26 (thèmes)";
+const APP_VERSION = "27 (Kids)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -450,20 +468,45 @@ let embedApiResolve; const embedApi = new Promise(r => embedApiResolve = r);
 window.onSpotifyIframeApiReady = API => embedApiResolve(API);
 let EmbedCtl = null, embedState = {}, readyWaiters = [];
 let embedUsed = false;
-function showBar(on) {
-  const bar = $("#playerbar"); if (!bar) return;
-  on = on && !!$("#embedslot");
-  bar.hidden = !on;
-  bar.classList.toggle("revealed", !!(G && G.phase === "revealed"));
-  placeBar();
-}
-// Le lecteur reste hors de la page (pour ne pas couper la musique) et se cale sur l'emplacement prévu dans la carte
+function showBar() { placeBar(); }
+// Le lecteur reste invisible. Si le téléphone bloque la lecture, il apparaît par-dessus la carte du bas (titre masqué)
 function placeBar() {
-  const bar = $("#playerbar"), slot = $("#embedslot");
-  if (!bar || bar.hidden || !slot) return;
-  const r = slot.getBoundingClientRect();
-  bar.style.top = (r.top + 3) + "px"; bar.style.left = (r.left + 3) + "px";
-  bar.style.width = (r.width - 6) + "px"; bar.style.height = (r.height - 6) + "px";
+  const bar = $("#playerbar"); if (!bar) return;
+  const zone = $("#playzone");
+  if (bar.classList.contains("needtap") && zone && screen === "game") {
+    const r = zone.getBoundingClientRect();
+    bar.style.top = Math.max(0, r.top + (r.height - 80) / 2) + "px"; bar.style.bottom = "auto";
+    bar.style.left = r.left + "px"; bar.style.width = r.width + "px";
+    bar.classList.add("show");
+  } else {
+    bar.classList.remove("show");
+    bar.style.top = "auto"; bar.style.bottom = "0"; bar.style.left = "0"; bar.style.width = "300px";
+  }
+}
+function needTap(on) {
+  const bar = $("#playerbar"); if (!bar) return;
+  bar.classList.toggle("needtap", !!on); placeBar();
+  if (on) setStatus("👉 Touche ▶ dans le lecteur pour lancer la musique");
+  else if (statusMsg.startsWith("👉")) setStatus("");
+}
+// Bouton rond lecture / pause, avec la progression du morceau en anneau
+const curUriOk = () => { if (!G || G.card == null) return null; const u = knownUri(SONG[G.card]); return EmbedCtl && u && embedState.playingURI === u ? u : null; };
+const ppCls = () => !curUriOk() ? "idle" : embedState.isBuffering ? "buf" : embedState.isPaused === false ? "playing" : "paused";
+const ppProg = () => curUriOk() && embedState.duration ? Math.min(1, (embedState.position || 0) / embedState.duration) : 0;
+function ppHtml() {
+  return `<button id="pp" class="pp ${ppCls()}" aria-label="Lecture ou pause"><svg viewBox="0 0 52 52"><circle class="arc" cx="26" cy="26" r="23" pathLength="100" style="stroke-dashoffset:${100 - ppProg() * 100}"/></svg><span class="ic"></span></button>`;
+}
+function ppUpdate() {
+  const b = $("#pp"); if (!b) return;
+  b.className = "pp " + ppCls();
+  const arc = b.querySelector(".arc"); if (arc) arc.style.strokeDashoffset = 100 - ppProg() * 100;
+}
+function ppToggle() {
+  if (playMode() !== "embed") { playCurrent(); return; }
+  if (!curUriOk()) { playCurrent(); return; }
+  if (embedState.isPaused === false) { try { EmbedCtl.pause(); } catch {} return; }
+  try { EmbedCtl.resume(); } catch { try { EmbedCtl.togglePlay(); } catch {} }
+  setTimeout(() => { if (embedState.isPaused !== false) needTap(true); }, 2200);
 }
 window.addEventListener("resize", placeBar);
 setInterval(placeBar, 400);
@@ -478,8 +521,8 @@ async function getEmbed(uri) {
       c.addListener("ready", () => { const w = readyWaiters; readyWaiters = []; w.forEach(f => f()); });
       c.addListener("playback_update", e => {
         embedState = e.data || {};
-        const sl = $("#embedslot"); if (sl && embedState.duration) sl.style.setProperty("--p", Math.min(1, (embedState.position || 0) / embedState.duration));
-        if (embedState.isPaused === false) { const bar = $("#playerbar"); if (bar) bar.classList.remove("needtap"); if (statusMsg.startsWith("👉")) setStatus(""); }
+        ppUpdate();
+        if (embedState.isPaused === false) { const bar = $("#playerbar"); if (bar && bar.classList.contains("needtap")) needTap(false); }
       });
       res({ c, fresh: true });
     });
@@ -504,7 +547,7 @@ async function playEmbedded(uri) {
   try { c.play(); } catch {}
   await sleep(2500);
   const ok = embedState.playingURI === uri && embedState.isPaused === false;
-  const bar = $("#playerbar"); if (bar) bar.classList.toggle("needtap", !ok);
+  needTap(!ok); ppUpdate();
   return ok;
 }
 async function pause() {
@@ -572,7 +615,8 @@ const save = () => LS.set("game", G);
 const cur = () => G.players[G.turn];
 
 const YEAR_MIN = Math.min(...SONG.map(s => s.year)), YEAR_MAX = Math.max(...SONG.map(s => s.year));
-const songsIn = (a, b, lvl = "moyen") => SONG.filter(s => s.year >= a && s.year <= b && (lvl === "difficile" ? !s.series : s.level === lvl));
+const songsIn = (a, b, lvl = "moyen") => SONG.filter(s => lvl === "kids" ? s.kids
+  : s.year >= a && s.year <= b && (lvl === "difficile" ? !s.series : s.level === lvl));
 // Morceaux réellement jouables ici (sans connexion, seuls ceux qui ont un identifiant)
 const playable = s => playMode() !== "embed" || isLogged() || !!knownUri(s);
 function deckFor(a, b, lvl, need = 0) {
@@ -582,8 +626,9 @@ function deckFor(a, b, lvl, need = 0) {
 const opt = () => ({ level: LS.get("level", "facile"), yMin: LS.get("yMin", YEAR_MIN), yMax: LS.get("yMax", YEAR_MAX) });
 function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moyen", tokens = 3, names = []) {
   const deck = shuffle(deckFor(yMin, yMax, level, nTeams + 5));
-  const players = Array.from({ length: nTeams }, (_, i) => ({ name: cleanName(names[i]) || "Équipe " + (i + 1), cards: [deck.pop()], tokens }));
-  G = { players, target, deck, yMin, yMax, level, turn: 0, card: null, phase: "ready", gap: null, result: null, winner: null };
+  const kids = level === "kids";
+  const players = Array.from({ length: nTeams }, (_, i) => ({ name: cleanName(names[i]) || "Équipe " + (i + 1), cards: kids ? [] : [deck.pop()], tokens: kids ? 0 : tokens }));
+  G = { players, target, deck, yMin, yMax, level, kids, turn: 0, card: null, phase: "ready", gap: null, result: null, winner: null };
   drawCard(); save();
 }
 function drawCard() {
@@ -744,17 +789,19 @@ function viewOptions() {
     <div class="top"><h2><svg class="ico big" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></g><g fill="currentColor" stroke="var(--card)" stroke-width="1.5"><circle cx="9" cy="6" r="2.6"/><circle cx="15" cy="12" r="2.6"/><circle cx="7" cy="18" r="2.6"/></g></svg> Options de partie</h2><button class="iconbtn" id="back">✕</button></div>
     <div class="content">
     <label>Niveau</label>
-    <div class="row lvlrow">
+    <div class="lvlgrid">
+      <button class="btn ${lvl === "kids" ? "" : "sec"}" data-lvl="kids">🧸 Kids<br><span style="font-weight:500;font-size:13px">${cnt("kids")} musiques</span></button>
       <button class="btn ${lvl === "facile" ? "" : "sec"}" data-lvl="facile">😀 Facile<br><span style="font-weight:500;font-size:13px">${cnt("facile")} musiques</span></button>
       <button class="btn ${lvl === "moyen" ? "" : "sec"}" data-lvl="moyen">🤔 Moyen<br><span style="font-weight:500;font-size:13px">${cnt("moyen")} musiques</span></button>
       <button class="btn ${lvl === "difficile" ? "" : "sec"}" data-lvl="difficile">🔥 Difficile<br><span style="font-weight:500;font-size:13px">${cnt("difficile")} musiques</span></button>
     </div>
     <p class="muted">${({
-      facile: "Facile : pour les cinéphiles occasionnels. Les thèmes célèbres des films les plus connus (grandes sagas, grands réalisateurs, surtout 1990–2025) et des génériques de séries cultes.",
+      kids: "Kids : dès 6 ans. Génériques de dessins animés et chansons de films pour enfants (Disney, Pixar…). On devine seulement le titre du film ou de la série : pas de date, pas de vote, pas de jeton.",
+      facile: "Facile : pour les cinéphiles occasionnels. Surtout des chansons de films célèbres, les thèmes les plus iconiques des grandes sagas et des génériques de séries cultes.",
       moyen: "Moyen : des films connus mais moins de blockbusters, et pour les grands films des morceaux moins évidents (ex. les funérailles de Padmé plutôt que le thème de Star Wars). Plus quelques génériques de séries.",
       difficile: "Difficile : toute la liste des films, y compris les plus anciens et les plus confidentiels (sans les séries)."
     })[lvl]}</p>
-    <label>Période</label>
+    ${lvl === "kids" ? "" : `<label>Période</label>
     <div class="box" style="margin-top:0">
       <div class="yearsel"><span class="yy" id="yminv"></span><span class="muted" id="ycount"></span><span class="yy" id="ymaxv"></span></div>
       <div class="range"><div class="track"></div><div class="fill" id="yfill"></div>
@@ -766,7 +813,7 @@ function viewOptions() {
         <button data-p="1980-1999">80-90</button>
         <button data-p="2000-${YEAR_MAX}">Depuis 2000</button>
       </div>
-    </div>
+    </div>`}
     </div>
     <div class="footer"><button class="btn" id="ok">Valider</button></div>
   </div>`;
@@ -777,6 +824,7 @@ function bindOptions() {
   $("#ok").onclick = () => go(optBack);
   document.querySelectorAll("[data-lvl]").forEach(btn => btn.onclick = () => { LS.set("level", btn.dataset.lvl); render(); });
   const a = $("#ymin"), b = $("#ymax");
+  if (!a) return;
   const upd = moved => {
     let lo = +a.value, hi = +b.value;
     if (lo > hi) { if (moved === a) { b.value = lo; hi = lo; } else { a.value = hi; lo = hi; } }
@@ -801,7 +849,7 @@ function bindOptions() {
 /* ---------- Préparation de partie ---------- */
 let setupMulti = LS.get("multi", false);
 function viewSetup() {
-  const nSel = +($("#teams") && $("#teams").value) || LS.get("teams", 2), teamNames = LS.get("teamNames", []);
+  const nSel = +($("#teams") && $("#teams").value) || LS.get("teams", 2), teamNames = LS.get("teamNames", []), kidsSel = opt().level === "kids";
   return `<div class="screen">
     <div class="top"><h2>Nouvelle partie</h2><button class="iconbtn" id="back">✕</button></div>
     <div class="content">
@@ -819,9 +867,13 @@ function viewSetup() {
     <label>Options de partie</label>
     <button class="box" id="optsum" style="width:100%;text-align:left;color:var(--text);font-size:15px;margin-top:0">
       <span id="optsumtxt"></span><br><span class="muted">Modifier ›</span></button>
-    <label>Cartes à atteindre pour gagner</label>
+    <label>${kidsSel ? "Bonnes réponses pour gagner" : "Cartes à atteindre pour gagner"}</label>
     <select id="target">${[5, 8, 10, 12, 15].map(v => `<option ${v === LS.get("target", 10) ? "selected" : ""}>${v}</option>`).join("")}</select>
-    <label>Jetons de vote par équipe</label>
+    ${kidsSel ? `<div class="box muted"><b style="color:var(--text)">Déroulé (Kids)</b><br>
+      • L'équipe qui joue appuie sur <b>Lecture</b> et écoute.<br>
+      • Elle dit à voix haute le film, le dessin animé ou la série.<br>
+      • <b>Voir la réponse</b>, puis on indique si c'est trouvé : chaque bonne réponse rapporte 1 point.<br>
+      • La première équipe à atteindre l'objectif gagne. Pas de date, pas de vote, pas de jeton.</div>` : `<label>Jetons de vote par équipe</label>
     <select id="tokens">${[0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${v === LS.get("tokens", 3) ? "selected" : ""}>${v ? v + " jeton" + (v > 1 ? "s" : "") : "Sans votes"}</option>`).join("")}</select>
     <div class="box muted">
       <b style="color:var(--text)">Déroulé</b><br>
@@ -834,7 +886,7 @@ function viewSetup() {
       &nbsp;&nbsp;– Si elle a raison et l'équipe qui joue a tort, elle gagne la carte (et dépense son jeton).<br>
       • Puis la réponse est dévoilée : bonne période = la carte rejoint la frise, sinon elle est défaussée.<br>
       • On passe à l'équipe suivante. La première à atteindre l'objectif gagne.
-    </div>
+    </div>`}
     </div>
     <div class="footer"><button class="btn" id="start">${setupMulti ? "Créer la partie" : "Lancer le jeu"}</button></div>
   </div>`;
@@ -851,8 +903,8 @@ function bindSetup() {
     const n = LS.get("teamNames", []); n[+inp.dataset.i] = inp.value; LS.set("teamNames", n);
   });
   $("#start").onclick = () => {
-    const target = +$("#target").value, tokens = +$("#tokens").value, { yMin, yMax, level } = opt();
-    LS.set("target", target); LS.set("tokens", tokens);
+    const target = +$("#target").value, tokens = $("#tokens") ? +$("#tokens").value : 0, { yMin, yMax, level } = opt();
+    LS.set("target", target); if ($("#tokens")) LS.set("tokens", tokens);
     if (!allReady() && !isLogged()) toast("Pense à te connecter à Spotify pour entendre la musique.");
     statusMsg = "";
     if (setupMulti) { createMulti({ target, tokens, yMin, yMax, level }); return; }
@@ -1085,6 +1137,7 @@ function postState(prev) {
     }
   }
   if (G.phase !== "vote") pickTeam = null;
+  if (newCard) needTap(false);
   if (G.multi && !G.curUri && G.card != null && G.phase !== "revealed") shareUri();
   ensureEmbedTrack();
   if (["home", "lobby", "join", "setup"].includes(screen)) screen = "game";
@@ -1097,7 +1150,7 @@ function postState(prev) {
   if (G.phase === "revealed" && G.resultSeq !== shownSeq) {
     shownSeq = G.resultSeq;
     if (prev && prev.phase !== "revealed") {
-      showResult();
+      if (!G.kids) showResult();
       if (navigator.vibrate) navigator.vibrate(G.result && G.result.ok ? 60 : [40, 60, 40]);
     }
   }
@@ -1139,8 +1192,14 @@ function applyAction(a) {
       else { pl.tokens = (pl.tokens || 0) + 1; G.bonus = true; }
       return true;
     }
+    case "kreveal": if (!G.kids || !active || G.phase !== "listen") return false; G.phase = "revealed"; G.result = { kids: true, judged: null, ok: null }; return true;
+    case "kjudge": {
+      if (!G.kids || !active || G.phase !== "revealed" || G.result.judged != null) return false;
+      G.result.judged = !!a.ok; G.result.ok = !!a.ok; if (a.ok) cur().cards.push(G.card); return true;
+    }
     case "next": {
       if (!active || G.phase !== "revealed") return false;
+      if (G.kids && G.result && G.result.judged == null) return false;
       const order = [G.turn, ...G.players.map((_, i) => i).filter(i => i !== G.turn)];
       const w = order.find(i => G.players[i].cards.length >= G.target);
       if (w != null) { G.winner = w; return true; }
@@ -1257,6 +1316,7 @@ function gapLabel(cards, i) {
 }
 
 function viewGame() {
+  if (G.kids) return viewKids();
   ensureG();
   const p = cur(), s = SONG[G.card], ph = G.phase, rev = ph === "revealed";
   const multi = !!G.multi, me = myTeam(), active = activeHere();
@@ -1265,7 +1325,7 @@ function viewGame() {
   const freeGap = 1 + chals.length < cards.length + 1;
   const canVoteTeam = i => i !== G.turn && (G.players[i].tokens || 0) > 0 && !chals.some(c => c.team === i) && freeGap;
   const hearsHere = active || !!G.remote;
-  const slot = playMode() === "embed" && hearsHere && ph !== "ready" ? `<div id="embedslot" class="embedslot"></div>` : "";
+  const slot = playMode() === "embed" && hearsHere && ph !== "ready" ? ppHtml() : "";
   const ctrl = playMode() === "embed"
     ? `<div class="ctrl"><button id="replay">${active ? "↺ Réécouter" : "▶ Écouter"}</button></div>`
     : `<div class="ctrl"><button id="replay">${active ? "↺ Réécouter" : "▶ Écouter"}</button><button id="pause">⏸ Pause</button>${active ? `<button id="devbtn">🔊 Appareil</button>` : ""}</div>`;
@@ -1276,10 +1336,10 @@ function viewGame() {
           <div><b>Nouvelle carte mystère</b><div class="muted">Appuie sur lecture</div></div></div></div>`
       : `<div class="mystery bottom"><div class="muted" style="text-align:center">${esc(p.name)} va lancer la musique…</div></div>`;
   } else if (!rev) {
-    mystery = `<div class="mystery bottom"><div class="playrow">${slot}${hearsHere ? ctrl
+    mystery = `<div class="mystery bottom" id="playzone"><div class="playrow">${slot}${hearsHere ? ctrl
       : `<div class="muted" style="text-align:center">${ph === "vote" ? "Réponse verrouillée, place aux votes…" : esc(p.name) + " écoute et choisit sa case…"}</div>`}</div></div>`;
   } else {
-    mystery = slot ? `<div class="mystery bottom"><div class="playrow">${slot}<div class="muted">Toucher la carte entourée pour revoir les résultats</div></div></div>` : "";
+    mystery = slot ? `<div class="mystery bottom" id="playzone"><div class="playrow">${slot}<div class="muted">Toucher la carte entourée pour revoir les résultats</div></div></div>` : "";
   }
   const canTap = (ph === "listen" && active) || (ph === "vote" && pickTeam != null);
   let tl = "";
@@ -1348,6 +1408,56 @@ function viewGame() {
   </div>`;
 }
 
+function viewKids() {
+  const p = cur(), s = SONG[G.card], ph = G.phase, multi = !!G.multi, me = myTeam(), active = activeHere();
+  const mine = multi && me != null ? G.players[me] : p;
+  const hears = active || !!G.remote, emb = playMode() === "embed";
+  const pp = emb && hears && ph !== "ready" ? ppHtml() : "";
+  const ctrl = emb ? `<div class="ctrl"><button id="replay">${active ? "↺ Réécouter" : "▶ Écouter"}</button></div>`
+    : `<div class="ctrl"><button id="replay">↺ Réécouter</button><button id="pause">⏸ Pause</button></div>`;
+  let card;
+  if (ph === "ready") card = active
+    ? `<div class="mystery bottom"><div class="readyrow"><button class="bigplay" id="play" aria-label="Lecture">▶</button>
+        <div><b>Écoute bien !</b><div class="muted">Appuie sur lecture</div></div></div></div>`
+    : `<div class="mystery bottom"><div class="muted" style="text-align:center">${esc(p.name)} va lancer la musique…</div></div>`;
+  else if (ph === "listen") card = `<div class="mystery bottom" id="playzone"><div class="playrow">${pp}${hears ? ctrl : `<div class="muted">${esc(p.name)} écoute…</div>`}</div></div>`;
+  else {
+    const j = G.result.judged;
+    card = `<div class="mystery bottom ${j === true ? "reveal ok" : j === false ? "reveal ko" : ""}" id="playzone" style="text-align:center">
+      <div class="kidsans">${esc(s.film)}</div><div class="track muted">« ${esc(s.track)} »</div>
+      ${pp ? `<div class="playrow" style="justify-content:center;margin-top:8px">${pp}</div>` : ""}</div>`;
+  }
+  const found = p.cards.map(id => `<div class="kfound">⭐ ${esc(SONG[id].film)}</div>`).reverse().join("");
+  const middle = found || `<div class="kempty"><div style="font-size:54px">🎵</div><div>Écoute la musique et devine<br><b>le film, le dessin animé ou la série !</b></div></div>`;
+  let actions;
+  if (!active) actions = `<button class="btn sec" disabled>${ph === "revealed" ? "En attente de " + esc(p.name) + "…" : esc(p.name) + " joue…"}</button>`;
+  else if (ph === "ready") actions = "";
+  else if (ph === "listen") actions = `<button class="btn" id="kreveal">Voir la réponse</button>`;
+  else if (G.result.judged == null) actions = `<div class="row"><button class="btn sec" id="kko" style="flex:1">✗ Raté</button><button class="btn" id="kok" style="flex:1">✓ Trouvé !</button></div>`;
+  else actions = `<button class="btn" id="next">Passer à ${esc(G.players[(G.turn + 1) % G.players.length].name)} →</button>`;
+  return `<div class="screen">
+    <div class="top"><div><button class="teambadge" id="teams" title="Voir toutes les équipes">${esc(mine.name)} ▾</button>
+      <div class="stats" style="margin-top:6px">⭐ ${mine.cards.length}/${G.target} bonnes réponses${multi ? ` · <span id="netdot" class="netdot ${netOnline ? "on" : ""}"></span>` : ""}</div></div>
+      <button class="iconbtn" id="menu" aria-label="Menu">☰</button></div>
+    ${multi && !active ? `<div class="turnbar">🎧 Au tour de <b>${esc(p.name)}</b> · ⭐ ${p.cards.length}</div>` : ""}
+    <div class="status" id="status" style="margin-top:6px">${esc(statusMsg)}</div>
+    <div class="tlwrap" style="margin-top:8px"><div class="timeline" id="tl">${middle}</div></div>
+    ${card}
+    ${actions}
+  </div>`;
+}
+function bindKids() {
+  $("#menu").onclick = openMenu;
+  $("#teams").onclick = showTeams;
+  $("#play") && ($("#play").onclick = () => { dispatch({ t: "play" }); playCurrent(); });
+  $("#pp") && ($("#pp").onclick = ppToggle);
+  $("#replay") && ($("#replay").onclick = () => { if (G.multi && G.remote && activeHere()) dispatch({ t: "replay" }); playCurrent(); });
+  $("#pause") && ($("#pause").onclick = () => pause());
+  $("#kreveal") && ($("#kreveal").onclick = () => dispatch({ t: "kreveal" }));
+  $("#kok") && ($("#kok").onclick = () => { if (navigator.vibrate) navigator.vibrate(60); dispatch({ t: "kjudge", ok: true }); });
+  $("#kko") && ($("#kko").onclick = () => dispatch({ t: "kjudge", ok: false }));
+  $("#next") && ($("#next").onclick = () => dispatch({ t: "next" }));
+}
 let tlScroll = 0, draft = { film: "", composer: "" }, draftCard = null;
 function openAnswer() {
   if (draftCard !== G.card) { draft = { film: "", composer: "" }; draftCard = G.card; }
@@ -1373,14 +1483,16 @@ function openAnswer() {
 function showTeams() {
   const me = G.multi ? myTeam() : null;
   sheet(`<h2>Les équipes</h2>${G.players.map((pl, i) => {
-    const years = sortedCards(pl).map(c => `<span class="ychip">${c.year}</span>`).join("");
+    const years = G.kids ? pl.cards.map(id => `<span class="ychip kidchip">${esc(SONG[id].film)}</span>`).join("")
+      : sortedCards(pl).map(c => `<span class="ychip">${c.year}</span>`).join("");
     return `<div class="teamcard ${i === G.turn ? "playing" : ""}">
       <div class="row" style="justify-content:space-between"><b>${i === G.turn ? "🎧 " : ""}${esc(pl.name)}${i === me ? ` <span class="muted">(toi)</span>` : ""}</b>
-        <span>${pl.cards.length}/${G.target} · ${pl.tokens || 0} 🪙</span></div>
+        <span>${pl.cards.length}/${G.target}${G.kids ? "" : ` · ${pl.tokens || 0} 🪙`}</span></div>
       <div class="ychips">${years}</div></div>`;
   }).join("")}<button class="btn" id="tm_close">Fermer</button>`, { tm_close: closeSheet });
 }
 function bindGame() {
+  if (G.kids) return bindKids();
   const tl = $("#tl"), ph = G.phase;
   if (ph === "revealed") {
     const nc = tl.querySelector("#hlcard");
@@ -1391,6 +1503,7 @@ function bindGame() {
   $("#menu").onclick = openMenu;
   $("#teams").onclick = showTeams;
   $("#play") && ($("#play").onclick = () => { dispatch({ t: "play" }); playCurrent(); });
+  $("#pp") && ($("#pp").onclick = ppToggle);
   $("#replay") && ($("#replay").onclick = () => { if (G.multi && G.remote && activeHere()) dispatch({ t: "replay" }); playCurrent(); });
   $("#pause") && ($("#pause").onclick = () => { pause(); });
   $("#devbtn") && ($("#devbtn").onclick = chooseDevice);
@@ -1451,7 +1564,7 @@ async function playCurrent() {
       setStatus("");
       const ok = await playEmbedded(uri);
       if (G.card !== s.id) return;
-      setStatus(ok ? "" : "👉 Touche ▶ dans le lecteur pour entendre la musique");
+      if (ok) setStatus("");
       return;
     }
     const res = await playUri(uri);
@@ -1594,7 +1707,7 @@ function openMenu() {
 function viewWin() {
   const w = G.players[G.winner];
   const ranking = [...G.players].sort((a, b) => b.cards.length - a.cards.length)
-    .map(pl => `<div class="score"><b>${esc(pl.name)}</b><span>${pl.cards.length} cartes</span></div>`).join("");
+    .map(pl => `<div class="score"><b>${esc(pl.name)}</b><span>${pl.cards.length} ${G.kids ? "bonne" + (pl.cards.length > 1 ? "s" : "") + " réponse" + (pl.cards.length > 1 ? "s" : "") : "cartes"}</span></div>`).join("");
   return `<div class="screen win"><div class="trophy">🏆</div><h1>${esc(w.name)}</h1><p class="muted">remporte la partie !</p>
     <div class="content"><div class="box" style="text-align:left">${ranking}</div></div>
     <div class="footer">${!G.multi
