@@ -130,6 +130,12 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
 .coin{display:inline-block;width:1em;height:1em;border-radius:50%;vertical-align:-.15em;margin:0 .05em;
   background:radial-gradient(circle at 35% 30%,#fff6c8 0 12%,#ffd34d 30%,#e8a515 70%,#b47a08 100%);
   box-shadow:inset 0 0 0 .08em #a86f05,inset 0 0 0 .16em #ffd968}
+.tcard.new,.tcard.lost{border-width:2px}
+.tcard.new{border-color:var(--ok);box-shadow:0 0 0 3px rgba(79,209,139,.22)}
+.tcard.lost{border-color:var(--ko);box-shadow:0 0 0 3px rgba(255,107,107,.22)}
+.tcard.lost .y{color:#ffb3b3}
+.lostlab{display:block;color:var(--ko);font-size:12px;font-weight:700;margin-top:2px}
+#hlcard{cursor:pointer}
 /* Curseur de période */
 .range{position:relative;height:44px;margin:4px 6px 0}
 .range .track{position:absolute;left:0;right:0;top:19px;height:6px;border-radius:6px;background:var(--line)}
@@ -219,7 +225,7 @@ const LEVELS = { facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "22 (voir la réponse)";
+const APP_VERSION = "24 (texte réponse)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -1128,11 +1134,11 @@ function resolveTurn() {
   G.bonus = false;
   if (fOk && cOk) { p.tokens = (p.tokens || 0) + 1; G.bonus = true; lines.push(`✓ Film et compositeur trouvés : +1 🪙 pour ${p.name}`); }
   if (ok) p.cards.push(s.id);
-  let won = ok;
+  let won = ok, wonBy = ok ? G.turn : null;
   for (const ch of G.chals) {
     const c = G.players[ch.team], vOk = gapOk(cards, ch.gap, s.year);
     if (vOk && !won) {
-      won = true; c.cards.push(s.id); c.tokens = Math.max(0, (c.tokens || 0) - 1);
+      won = true; wonBy = ch.team; c.cards.push(s.id); c.tokens = Math.max(0, (c.tokens || 0) - 1);
       lines.push(`✓ ${c.name} avait voté juste : elle remporte la carte (et utilise son jeton).`);
     } else if (vOk) {
       lines.push(`= ${c.name} avait aussi une bonne case : elle garde son jeton.`);
@@ -1141,7 +1147,7 @@ function resolveTurn() {
       lines.push(`✗ Le vote de ${c.name} était faux : son jeton passe à ${p.name} 🪙`);
     }
   }
-  G.phase = "revealed"; G.result = { ok, hint, lines }; G.resultSeq = (G.resultSeq || 0) + 1;
+  G.phase = "revealed"; G.result = { ok, hint, lines, wonBy }; G.resultSeq = (G.resultSeq || 0) + 1;
 }
 
 /* ---------- Jeu ---------- */
@@ -1177,10 +1183,7 @@ function viewGame() {
     mystery = `<div class="mystery bottom">${slot}${hearsHere ? ctrl
       : `<div class="muted" style="text-align:center">${ph === "vote" ? "Réponse verrouillée, place aux votes…" : esc(p.name) + " écoute et choisit sa case…"}</div>`}</div>`;
   } else {
-    mystery = `<div class="mystery bottom reveal ${G.result.ok ? "ok" : "ko"}" id="revcard" role="button" title="Revoir les résultats">
-      <div class="revrow"><div class="year">${s.year}</div>
-        <div><div class="film">${esc(s.film)}</div><div class="track">« ${esc(s.track)} » · <span class="muted">${esc(s.composer)}</span></div></div></div>
-      ${slot}</div>`;
+    mystery = slot ? `<div class="mystery bottom">${slot}</div>` : "";
   }
   const canTap = (ph === "listen" && active) || (ph === "vote" && pickTeam != null);
   let tl = "";
@@ -1195,6 +1198,15 @@ function viewGame() {
       tl += `<div class="tcard ${rev && G.result.ok && c.id === G.card ? "new" : ""}" style="${rev ? "margin-top:8px" : ""}"><div class="y">${c.year}</div>
         <div class="t"><b>${esc(c.film)}</b><span>${esc(c.composer)}</span></div></div>`;
     }
+  }
+  if (rev) {
+    const disp = G.result.ok ? cards : [...cards, { ...s, ghost: true }].sort((a, b) => a.year - b.year);
+    tl = disp.map(c => {
+      const hl = c.id === G.card, cls = hl ? (G.result.ok ? "new" : "lost") : "";
+      const lab = c.ghost ? `<span class="lostlab">${G.result.wonBy != null ? "→ remportée par " + esc(G.players[G.result.wonBy].name) : "défaussée"}</span>` : "";
+      return `<div class="tcard ${cls}" ${hl ? `id="hlcard" role="button" title="Revoir les résultats"` : ""} style="margin-top:8px"><div class="y">${c.year}</div>
+        <div class="t"><b>${esc(c.film)}</b><span>${hl ? "« " + esc(c.track) + " » · " : ""}${esc(c.composer)}</span>${lab}</div></div>`;
+    }).join("");
   }
   let actions, hint = "";
   if (rev) {
@@ -1211,10 +1223,10 @@ function viewGame() {
       hint = `⚔️ <b>${esc(G.players[pickTeam].name)}</b> : touche une case libre (1 🪙)`;
     } else if (!multi) {
       const any = G.players.some((_, i) => canVoteTeam(i));
-      actions = `<div class="row">${any ? `<button class="btn sec" id="vote" style="flex:0 0 42%">⚔️ Une équipe vote</button>` : ""}
-        <button class="btn" id="reveal">👁 Voir la réponse</button></div>`;
+      actions = `<div class="row">${any ? `<button class="btn sec" id="vote" style="flex:0 0 42%">⚔️ Voter</button>` : ""}
+        <button class="btn" id="reveal">Voir la réponse</button></div>`;
     } else if (active) {
-      actions = `<button class="btn" id="reveal">👁 Voir la réponse</button>`;
+      actions = `<button class="btn" id="reveal">Voir la réponse</button>`;
     } else {
       const myVote = chals.find(c => c.team === me);
       if (myVote) actions = `<button class="btn sec" id="unvote">✕ Retirer mon vote (${esc(gapLabel(cards, myVote.gap))})</button>`;
@@ -1246,7 +1258,7 @@ function openAnswer() {
   const cards = sortedCards(cur());
   sheet(`<h2>Ta réponse</h2>
     <p class="muted">Période choisie : <b style="color:var(--gold)">${esc(gapLabel(cards, G.gap))}</b><br>
-      Propose le film et le compositeur (facultatif, les fautes d'orthographe sont acceptées). Les deux justes = +1 🪙.</p>
+      Propose le film et le compositeur. Si les deux sont justes, gagne 1 🪙 de vote.</p>
     <label>🎬 Film</label><input id="a_film" maxlength="80" autocomplete="off" placeholder="ex. Gladiator" value="${esc(draft.film)}">
     <label>🎼 Compositeur</label><input id="a_comp" maxlength="80" autocomplete="off" placeholder="ex. Hans Zimmer" value="${esc(draft.composer)}">
     <button class="btn" id="a_ok" style="margin-top:14px">Valider ma réponse</button>
@@ -1275,7 +1287,7 @@ function showTeams() {
 function bindGame() {
   const tl = $("#tl"), ph = G.phase;
   if (ph === "revealed") {
-    const nc = tl.querySelector(".tcard.new");
+    const nc = tl.querySelector("#hlcard");
     if (nc) tl.scrollTop = nc.offsetTop - tl.clientHeight / 2 + nc.offsetHeight / 2; else tl.scrollTop = tlScroll;
   } else tl.scrollTop = tlScroll;
   tl.addEventListener("scroll", () => { tlScroll = tl.scrollTop; }, { passive: true });
@@ -1327,7 +1339,7 @@ function bindGame() {
   });
   $("#votecancel") && ($("#votecancel").onclick = () => { pickTeam = null; render(); });
   $("#next") && ($("#next").onclick = () => dispatch({ t: "next" }));
-  $("#revcard") && ($("#revcard").onclick = e => { if (!e.target.closest(".embedslot")) showResult(); });
+  $("#hlcard") && ($("#hlcard").onclick = showResult);
   $("#bonus") && ($("#bonus").onclick = () => { if (!G.bonus && navigator.vibrate) navigator.vibrate(40); dispatch({ t: "bonus" }); });
 }
 async function playCurrent() {
