@@ -120,6 +120,13 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 .switch .sl::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s}
 .switch input:checked + .sl{background:var(--gold)}
 .switch input:checked + .sl::after{left:23px}
+button.teambadge{border:0;cursor:pointer;font-family:inherit}
+.teamcard{padding:10px 12px;border:1px solid var(--line);border-radius:12px;margin:8px 0;background:var(--card)}
+.teamcard.playing{border-color:var(--gold)}
+.ychips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.ychip{font-family:Georgia,serif;font-weight:700;color:var(--gold2);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:2px 8px;font-size:14px}
+#playerbar.needtap{animation:needtap 1.1s ease-in-out infinite}
+@keyframes needtap{0%,100%{box-shadow:0 0 0 0 rgba(232,180,76,.0)}50%{box-shadow:0 0 0 6px rgba(232,180,76,.55)}}
 /* Curseur de période */
 .range{position:relative;height:44px;margin:4px 6px 0}
 .range .track{position:absolute;left:0;right:0;top:19px;height:6px;border-radius:6px;background:var(--line)}
@@ -207,7 +214,7 @@ const LEVELS = { facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "20 (noms d'équipes)";
+const APP_VERSION = "21 (réponse + votes)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -388,21 +395,35 @@ async function getEmbed(uri) {
     API.createController($("#embed"), { uri, width: "100%", height: 80 }, c => {
       EmbedCtl = c;
       c.addListener("ready", () => { const w = readyWaiters; readyWaiters = []; w.forEach(f => f()); });
-      c.addListener("playback_update", e => { embedState = e.data || {}; });
+      c.addListener("playback_update", e => {
+        embedState = e.data || {};
+        if (embedState.isPaused === false) { const bar = $("#playerbar"); if (bar) bar.classList.remove("needtap"); if (statusMsg.startsWith("👉")) setStatus(""); }
+      });
       res({ c, fresh: true });
     });
   });
+}
+let lastLoadedUri = null;
+const knownUri = s => s.sid ? "spotify:track:" + s.sid : ((LS.get("ids2", {}) || {})[songKey(s)] || null);
+// Charge (sans lancer) le morceau de la carte en cours dans le lecteur : la bonne musique est prête et jamais celle d'avant
+function ensureEmbedTrack() {
+  if (playMode() !== "embed" || !EmbedCtl || !G || G.card == null) return;
+  if (!(activeHere() || G.remote)) return;
+  const uri = knownUri(SONG[G.card]);
+  if (uri && lastLoadedUri !== uri) { try { EmbedCtl.loadUri(uri); lastLoadedUri = uri; } catch {} }
 }
 async function playEmbedded(uri) {
   embedUsed = true; showBar(true);
   const { c, fresh } = await getEmbed(uri);
   showBar(screen === "game");
-  if (fresh) await waitReady(5000);
-  else if (embedState.playingURI !== uri) { c.loadUri(uri); await waitReady(5000); }
-  else { c.seek(0); }
+  if (fresh) { lastLoadedUri = uri; await waitReady(5000); }
+  else if (lastLoadedUri !== uri) { c.loadUri(uri); lastLoadedUri = uri; await waitReady(4000); }
+  else { try { c.seek(0); } catch {} }
   try { c.play(); } catch {}
   await sleep(2500);
-  return embedState.playingURI === uri && embedState.isPaused === false;
+  const ok = embedState.playingURI === uri && embedState.isPaused === false;
+  const bar = $("#playerbar"); if (bar) bar.classList.toggle("needtap", !ok);
+  return ok;
 }
 async function pause() {
   if (playMode() === "embed") { try { EmbedCtl && EmbedCtl.pause(); } catch {} return; }
@@ -480,7 +501,7 @@ function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moye
 function drawCard() {
   if (!G.deck.length) { G.deck = shuffle(songsIn(G.yMin || YEAR_MIN, G.yMax || YEAR_MAX, G.level || "moyen").map(s => s.id).filter(id => !G.players.some(p => p.cards.includes(id)))); }
   // phase : "ready" (pas encore écouté) → "listen" (musique lancée, choix de la case) → "revealed"
-  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.bonus = false;
+  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.bonus = false; G.answer = null; G.voteQueue = []; G.voteIdx = 0;
 }
 const cleanName = n => String(n || "").replace(/\s+/g, " ").trim().slice(0, 18);
 const sortedCards = p => p.cards.map(id => SONG[id]).sort((a, b) => a.year - b.year);
@@ -714,14 +735,12 @@ function viewSetup() {
       <b style="color:var(--text)">Déroulé</b><br>
       • Chaque équipe démarre avec une carte révélée sur sa frise.<br>
       • L'équipe qui joue appuie sur <b>Lecture</b> (et peut réécouter).<br>
-      • Elle touche la case entre deux années où elle pense que le film se place.<br>
-      • <b>Valider</b> révèle le film, le morceau, le compositeur et l'année.<br>
-      • Bonne case : la carte rejoint sa frise. Sinon, elle est défaussée.<br>
-      • <b>Vote</b> : avant de valider, une équipe adverse peut miser 1 🪙 sur une autre case.<br>
+      • Elle touche la période où elle pense que le film se place, puis propose le film et le compositeur.<br>
+      • Film <i>et</i> compositeur justes (fautes acceptées) : <b>+1 🪙</b>.<br>
+      • <b>Vote</b> : une fois la réponse validée, chaque équipe adverse, dans l'ordre, peut miser 1 🪙 sur une autre période, ou passer.<br>
       &nbsp;&nbsp;– Si elle se trompe, son jeton passe à l'équipe qui joue.<br>
       &nbsp;&nbsp;– Si elle a raison et l'équipe qui joue a tort, elle gagne la carte (et dépense son jeton).<br>
-      &nbsp;&nbsp;– Plusieurs équipes peuvent voter, chacune sur une case différente.<br>
-      • <b>Bonus</b> : si l'équipe qui joue a trouvé le film <i>et</i> le compositeur, elle gagne 1 🪙.<br>
+      • Puis la réponse est dévoilée : bonne période = la carte rejoint la frise, sinon elle est défaussée.<br>
       • On passe à l'équipe suivante. La première à atteindre l'objectif gagne.
     </div>
     </div>
@@ -973,7 +992,8 @@ function postState(prev) {
       if (G.multi && myTeam() === G.turn && navigator.vibrate) navigator.vibrate([60, 60, 60]);
     }
   }
-  if (G.phase !== "listen") pickTeam = null;
+  if (G.phase !== "vote") pickTeam = null;
+  ensureEmbedTrack();
   if (["home", "lobby", "join", "setup"].includes(screen)) screen = "game";
   render();
   if (newCard && wantPlayNext) { wantPlayNext = false; if (activeHere()) playCurrent(); }
@@ -993,27 +1013,29 @@ function applyAction(a) {
   if (!G) return false;
   ensureG();
   const multi = !!G.multi, active = !multi || a.by === G.turn;
+  const voter = G.phase === "vote" ? G.voteQueue[G.voteIdx] : null;
+  const canVote = G.phase === "vote" && (!multi || a.by === voter);
   switch (a.t) {
     case "play": if (!active || G.phase !== "ready") return false; G.phase = "listen"; G.playSeq = (G.playSeq || 0) + 1; return true;
-    case "replay": if (!active || G.phase !== "listen") return false; G.playSeq = (G.playSeq || 0) + 1; return true;
+    case "replay": if (!active || !["listen", "vote"].includes(G.phase)) return false; G.playSeq = (G.playSeq || 0) + 1; return true;
     case "redraw": if (!active) return false; drawCard(); G.phase = "listen"; G.playSeq = (G.playSeq || 0) + 1; return true;
-    case "gap":
-      if (!active || G.phase !== "listen" || G.chals.some(c => c.gap === a.i)) return false;
-      G.gap = a.i; return true;
+    case "gap": if (!active || G.phase !== "listen") return false; G.gap = a.i; return true;
+    case "answer": {
+      if (!active || G.phase !== "listen" || G.gap == null) return false;
+      G.answer = { film: String(a.film || "").slice(0, 80), composer: String(a.composer || "").slice(0, 80) };
+      G.phase = "vote"; G.chals = [];
+      G.voteQueue = G.players.map((_, i) => (G.turn + 1 + i) % G.players.length).filter(i => i !== G.turn);
+      G.voteIdx = 0; nextVoter();
+      return true;
+    }
     case "vote": {
-      const team = multi ? a.by : a.team;
-      if (G.phase !== "listen" || G.gap == null || team == null || team === G.turn) return false;
-      const pl = G.players[team];
-      if (!pl || (pl.tokens || 0) <= 0 || a.gap === G.gap) return false;
-      if (G.chals.some(c => c.team === team || c.gap === a.gap)) return false;
-      G.chals.push({ team, gap: a.gap }); return true;
+      if (!canVote) return false;
+      const used = [G.gap, ...G.chals.map(c => c.gap)];
+      if (a.gap == null || used.includes(a.gap) || a.gap < 0 || a.gap > cur().cards.length) return false;
+      G.chals.push({ team: voter, gap: a.gap });
+      G.voteIdx++; nextVoter(); return true;
     }
-    case "unvote": {
-      const team = multi ? a.by : a.team, n = G.chals.length;
-      G.chals = G.chals.filter(c => c.team !== team); return G.chals.length !== n;
-    }
-    case "clearvotes": if (!active || !G.chals.length) return false; G.chals = []; return true;
-    case "validate": if (!active || G.phase !== "listen" || G.gap == null) return false; resolveTurn(); return true;
+    case "pass": if (!canVote) return false; G.voteIdx++; nextVoter(); return true;
     case "bonus": {
       if (!active || G.phase !== "revealed") return false;
       const pl = cur();
@@ -1033,7 +1055,62 @@ function applyAction(a) {
   }
   return false;
 }
+// Passe à la prochaine équipe qui peut voter (jeton + case libre) ; sinon on dévoile la réponse
+function nextVoter() {
+  const gaps = cur().cards.length + 1;
+  while (G.voteIdx < G.voteQueue.length) {
+    const pl = G.players[G.voteQueue[G.voteIdx]];
+    if ((pl.tokens || 0) > 0 && 1 + G.chals.length < gaps) return;
+    G.voteIdx++;
+  }
+  resolveTurn();
+}
 const gapOk = (cards, i, y) => (!cards[i - 1] || cards[i - 1].year <= y) && (!cards[i] || y <= cards[i].year);
+
+/* ---------- Correction tolérante des propositions ---------- */
+function lev(a, b) {
+  const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const row = [i];
+    for (let j = 1; j <= n; j++) row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = row;
+  }
+  return prev[n];
+}
+const STOP = new Set(["le", "la", "les", "l", "un", "une", "des", "de", "du", "d", "the", "a", "an", "of", "et", "and", "chapitre", "partie", "part"]);
+const words = s => norm(s).split(" ").filter(w => w && !STOP.has(w));
+function fuzzyEq(a, b) {
+  if (a === b) return true;
+  const n = Math.max(a.length, b.length);
+  if (n <= 4) return false;
+  return lev(a, b) <= (n <= 6 ? 1 : n <= 9 ? 2 : 3);
+}
+function filmMatch(guess, s) {
+  const g = words(guess).join(" ");
+  if (g.replace(/ /g, "").length < 2) return false;
+  for (const t of [s.film, s.orig]) {
+    const tw = words(t).join(" ");
+    if (!tw) continue;
+    if (fuzzyEq(g.replace(/ /g, ""), tw.replace(/ /g, ""))) return true;
+    const gc = norm(guess).replace(/ /g, ""), tc = norm(t).replace(/ /g, "");
+    if (gc === tc || fuzzyEq(gc, tc)) return true; // « lalaland », « lebonlabrute… »
+    if (g.length >= Math.min(6, tw.length) && tw.includes(g)) return true; // « Harry Potter », « Seigneur des anneaux »…
+    const gw = g.split(" "), tws = tw.split(" ");
+    if (gw.join("").length >= 5 && gw.every(w => tws.some(x => x === w || fuzzyEq(w, x)))) return true;
+  }
+  return false;
+}
+function composerMatch(guess, s) {
+  const gw = words(guess);
+  if (!gw.length) return false;
+  return s.composer.split(/&| et | and |,/).map(x => x.trim()).filter(Boolean).some(person => {
+    const pw = words(person), last = pw[pw.length - 1] || "";
+    if (gw.some(w => w === last || fuzzyEq(w, last))) return true;
+    return fuzzyEq(gw.join(""), pw.join(""));
+  });
+}
+
 function resolveTurn() {
   const p = cur(), cards = sortedCards(p), s = SONG[G.card], i = G.gap;
   const ok = gapOk(cards, i, s.year);
@@ -1043,15 +1120,23 @@ function resolveTurn() {
     const a = j === -1 ? cards[cards.length - 1] : cards[j - 1], b = j === -1 ? null : cards[j];
     hint = !a ? `il fallait la placer avant ${b.year}` : !b ? `il fallait la placer après ${a.year}` : `il fallait la placer entre ${a.year} et ${b.year}`;
   }
-  const lines = [ok ? `✓ ${p.name} a raison : carte gagnée !` : `✗ ${p.name} s'est trompée — ${hint}`];
+  const lines = [ok ? `✓ ${p.name} a la bonne période : carte gagnée !` : `✗ ${p.name} s'est trompée de période — ${hint}`];
+  const ans = G.answer || {};
+  const fOk = filmMatch(ans.film || "", s), cOk = composerMatch(ans.composer || "", s);
+  if (ans.film || ans.composer) {
+    lines.push(`${fOk ? "✓" : "✗"} Film proposé : « ${ans.film || "—"} »`);
+    lines.push(`${cOk ? "✓" : "✗"} Compositeur proposé : « ${ans.composer || "—"} »`);
+  }
+  G.bonus = false;
+  if (fOk && cOk) { p.tokens = (p.tokens || 0) + 1; G.bonus = true; lines.push(`✓ Film et compositeur trouvés : +1 🪙 pour ${p.name}`); }
   if (ok) p.cards.push(s.id);
   let won = ok;
   for (const ch of G.chals) {
-    const c = G.players[ch.team], cOk = gapOk(cards, ch.gap, s.year);
-    if (cOk && !won) {
+    const c = G.players[ch.team], vOk = gapOk(cards, ch.gap, s.year);
+    if (vOk && !won) {
       won = true; c.cards.push(s.id); c.tokens = Math.max(0, (c.tokens || 0) - 1);
-      lines.push(`✓ ${c.name} avait raison : elle remporte la carte (et utilise son jeton).`);
-    } else if (cOk) {
+      lines.push(`✓ ${c.name} avait voté juste : elle remporte la carte (et utilise son jeton).`);
+    } else if (vOk) {
       lines.push(`= ${c.name} avait aussi une bonne case : elle garde son jeton.`);
     } else {
       c.tokens = Math.max(0, (c.tokens || 0) - 1); p.tokens = (p.tokens || 0) + 1;
@@ -1079,25 +1164,27 @@ function viewGame() {
   const multi = !!G.multi, me = myTeam(), active = activeHere();
   const mine = multi && me != null ? G.players[me] : p;
   const cards = sortedCards(p), chals = G.chals;
+  const voter = ph === "vote" ? G.voteQueue[G.voteIdx] : null;
+  const myVoteTurn = ph === "vote" && (!multi || me === voter);
   const hearsHere = active || !!G.remote;
   const slot = playMode() === "embed" && hearsHere && ph !== "ready" ? `<div id="embedslot" class="embedslot"></div>` : "";
+  const ctrl = `<div class="ctrl"><button id="replay">↺ Réécouter</button><button id="pause">⏸ Pause</button>${playMode() === "embed" || !active ? "" : `<button id="devbtn">🔊 Appareil</button>`}</div>`;
   let mystery;
   if (ph === "ready") {
     mystery = active
       ? `<div class="mystery bottom"><div class="readyrow"><button class="bigplay" id="play" aria-label="Lecture">▶</button>
           <div><b>Nouvelle carte mystère</b><div class="muted">Appuie sur lecture</div></div></div></div>`
       : `<div class="mystery bottom"><div class="muted" style="text-align:center">${esc(p.name)} va lancer la musique…</div></div>`;
-  } else if (ph === "listen") {
-    mystery = `<div class="mystery bottom">${slot}${hearsHere
-      ? `<div class="ctrl"><button id="replay">↺ Réécouter</button><button id="pause">⏸ Pause</button>${playMode() === "embed" || !active ? "" : `<button id="devbtn">🔊 Appareil</button>`}</div>`
-      : `<div class="muted" style="text-align:center">${esc(p.name)} écoute et choisit sa case…</div>`}</div>`;
+  } else if (!rev) {
+    mystery = `<div class="mystery bottom">${slot}${hearsHere ? ctrl
+      : `<div class="muted" style="text-align:center">${ph === "vote" ? "Réponse verrouillée, place aux votes…" : esc(p.name) + " écoute et choisit sa case…"}</div>`}</div>`;
   } else {
     mystery = `<div class="mystery bottom reveal ${G.result.ok ? "ok" : "ko"}" id="revcard" role="button" title="Revoir les résultats">
       <div class="revrow"><div class="year">${s.year}</div>
         <div><div class="film">${esc(s.film)}</div><div class="track">« ${esc(s.track)} » · <span class="muted">${esc(s.composer)}</span></div></div></div>
       ${slot}</div>`;
   }
-  const canTap = ph === "listen" && (pickTeam != null || active);
+  const canTap = (ph === "listen" && active) || (ph === "vote" && pickTeam != null);
   let tl = "";
   for (let i = 0; i <= cards.length; i++) {
     if (!rev) {
@@ -1111,41 +1198,34 @@ function viewGame() {
         <div class="t"><b>${esc(c.film)}</b><span>${esc(c.composer)}</span></div></div>`;
     }
   }
-  const freeGap = chals.length + 1 < cards.length + 1;
   let actions, hint = "";
   if (rev) {
     actions = active
       ? `<button class="btn ${G.bonus ? "" : "sec"}" id="bonus" style="font-size:15px;padding:12px">${G.bonus
-          ? `✓ +1 🪙 pour ${esc(p.name)} (toucher pour annuler)` : "🪙 Film et compositeur trouvés : +1 jeton"}</button>
+          ? `✓ Bonus +1 🪙 pour ${esc(p.name)} (toucher pour annuler)` : "🪙 Corriger : film et compositeur trouvés (+1)"}</button>
         <button class="btn" id="next">Passer à ${esc(G.players[(G.turn + 1) % G.players.length].name)} →</button>`
       : `<button class="btn sec" disabled>En attente de ${esc(p.name)}…</button>`;
-  } else if (pickTeam != null) {
-    actions = `<button class="btn sec" id="chalcancel">Annuler le vote</button>`;
-    hint = `<b>${esc(G.players[pickTeam].name)}</b> : touche une case libre où tu crois que va le film`;
+  } else if (ph === "vote") {
+    const v = G.players[voter];
+    hint = `🔒 Réponse de ${esc(p.name)} verrouillée · ⚔️ vote de <b>${esc(v.name)}</b> (${v.tokens || 0} 🪙)`;
+    if (pickTeam != null) {
+      actions = `<button class="btn sec" id="votecancel">Annuler</button>`;
+      hint = `⚔️ <b>${esc(v.name)}</b> : touche une case libre (1 🪙)`;
+    } else if (myVoteTurn) {
+      actions = `<div class="row"><button class="btn sec" id="pass" style="flex:0 0 38%">Passer</button>
+        <button class="btn" id="vote">⚔️ Voter (1 🪙)</button></div>`;
+    } else actions = `<button class="btn sec" disabled>Vote de ${esc(v.name)} en cours…</button>`;
   } else if (active) {
-    const canChal = !multi && ph === "listen" && G.gap != null && votersLeft().length > 0 && freeGap;
-    actions = `<div class="row">
-      ${canChal ? `<button class="btn sec" id="chal" style="flex:0 0 38%">⚔️ Voter</button>` : ""}
-      ${!multi && chals.length && !canChal ? `<button class="btn sec" id="chalclear" style="flex:0 0 38%">✕ Annuler les votes</button>` : ""}
-      <button class="btn" id="validate" ${G.gap == null || ph === "ready" ? "disabled" : ""}>Valider</button></div>`;
-    if (chals.length && ph === "listen") hint = `⚔️ ${chals.length} vote${chals.length > 1 ? "s" : ""}` +
-      (multi ? "" : ` · <a href="#" id="chalclear2" style="color:var(--muted)">annuler les votes</a>`);
+    actions = `<button class="btn" id="answer" ${G.gap == null || ph === "ready" ? "disabled" : ""}>${G.gap == null ? "Touche une période" : "Proposer film et compositeur"}</button>`;
   } else {
-    const myVote = chals.find(c => c.team === me), tok = mine.tokens || 0;
-    if (myVote) actions = `<button class="btn sec" id="unvote">✕ Retirer mon vote (${esc(gapLabel(cards, myVote.gap))})</button>`;
-    else if (ph !== "listen") actions = `<button class="btn sec" disabled>En attente de la musique…</button>`;
-    else if (G.gap == null) actions = `<button class="btn sec" disabled>En attente du choix de ${esc(p.name)}…</button>`;
-    else if (!tok) actions = `<button class="btn sec" disabled>Plus de jeton pour voter</button>`;
-    else if (!freeGap) actions = `<button class="btn sec" disabled>Plus de case libre pour voter</button>`;
-    else actions = `<button class="btn" id="myvote">⚔️ Voter contre ${esc(p.name)} (1 🪙)</button>`;
-    if (chals.length && ph === "listen") hint = `⚔️ ${chals.length} vote${chals.length > 1 ? "s" : ""}`;
+    actions = `<button class="btn sec" disabled>${ph === "ready" ? "En attente de la musique…" : "En attente de la réponse de " + esc(p.name) + "…"}</button>`;
   }
   return `<div class="screen">
-    <div class="top"><div><div class="row" style="gap:10px"><span class="teambadge">${esc(mine.name)}</span>
+    <div class="top"><div><div class="row" style="gap:10px"><button class="teambadge" id="teams" title="Voir toutes les équipes">${esc(mine.name)} ▾</button>
         <span class="mytok">${mine.tokens || 0} 🪙</span></div>
       <div class="stats" style="margin-top:6px">${mine.cards.length}/${G.target} cartes${multi ? ` · <span id="netdot" class="netdot ${netOnline ? "on" : ""}"></span>` : ""}</div></div>
       <button class="iconbtn" id="menu" aria-label="Menu">☰</button></div>
-    ${multi && !active ? `<div class="turnbar">🎧 Au tour de <b>${esc(p.name)}</b> · sa frise ci-dessous${G.remote ? " · 🌍" : ""}</div>` : ""}
+    ${multi && !active ? `<div class="turnbar">🎧 Au tour de <b>${esc(p.name)}</b> · ${p.tokens || 0} 🪙${G.remote ? " · 🌍" : ""}</div>` : ""}
     <div class="status" id="status" style="margin-top:6px">${esc(statusMsg)}</div>
     ${hint ? `<div class="hint" style="margin-top:6px">${hint}</div>` : ""}
     <div class="tlwrap" style="margin-top:8px"><div class="fade-top"></div><div class="timeline" id="tl">${tl}</div><div class="fade-bot"></div></div>
@@ -1154,7 +1234,38 @@ function viewGame() {
   </div>`;
 }
 
-let tlScroll = 0;
+let tlScroll = 0, draft = { film: "", composer: "" }, draftCard = null;
+function openAnswer() {
+  if (draftCard !== G.card) { draft = { film: "", composer: "" }; draftCard = G.card; }
+  const cards = sortedCards(cur());
+  sheet(`<h2>Ta réponse</h2>
+    <p class="muted">Période choisie : <b style="color:var(--gold)">${esc(gapLabel(cards, G.gap))}</b><br>
+      Propose le film et le compositeur (facultatif, les fautes d'orthographe sont acceptées). Les deux justes = +1 🪙.</p>
+    <label>🎬 Film</label><input id="a_film" maxlength="80" autocomplete="off" placeholder="ex. Gladiator" value="${esc(draft.film)}">
+    <label>🎼 Compositeur</label><input id="a_comp" maxlength="80" autocomplete="off" placeholder="ex. Hans Zimmer" value="${esc(draft.composer)}">
+    <button class="btn" id="a_ok" style="margin-top:14px">Valider ma réponse</button>
+    <button class="btn ghost" id="a_back">Changer de période</button>`, {
+    a_back: closeSheet,
+    a_ok: () => {
+      draft = { film: $("#a_film").value.trim(), composer: $("#a_comp").value.trim() };
+      closeSheet(); dispatch({ t: "answer", film: draft.film, composer: draft.composer });
+    }
+  });
+  const f = $("#a_film"), c = $("#a_comp");
+  f.oninput = () => draft.film = f.value; c.oninput = () => draft.composer = c.value;
+  f.onkeydown = e => { if (e.key === "Enter") c.focus(); };
+  c.onkeydown = e => { if (e.key === "Enter") $("#a_ok").click(); };
+}
+function showTeams() {
+  const me = G.multi ? myTeam() : null;
+  sheet(`<h2>Les équipes</h2>${G.players.map((pl, i) => {
+    const years = sortedCards(pl).map(c => `<span class="ychip">${c.year}</span>`).join("");
+    return `<div class="teamcard ${i === G.turn ? "playing" : ""}">
+      <div class="row" style="justify-content:space-between"><b>${i === G.turn ? "🎧 " : ""}${esc(pl.name)}${i === me ? ` <span class="muted">(toi)</span>` : ""}</b>
+        <span>${pl.cards.length}/${G.target} · ${pl.tokens || 0} 🪙</span></div>
+      <div class="ychips">${years}</div></div>`;
+  }).join("")}<button class="btn" id="tm_close">Fermer</button>`, { tm_close: closeSheet });
+}
 function bindGame() {
   const tl = $("#tl"), ph = G.phase;
   if (ph === "revealed") {
@@ -1164,35 +1275,32 @@ function bindGame() {
   tl.addEventListener("scroll", () => { tlScroll = tl.scrollTop; }, { passive: true });
 
   $("#menu").onclick = openMenu;
+  $("#teams").onclick = showTeams;
   $("#play") && ($("#play").onclick = () => { dispatch({ t: "play" }); playCurrent(); });
   $("#replay") && ($("#replay").onclick = () => { if (G.multi && G.remote && activeHere()) dispatch({ t: "replay" }); playCurrent(); });
   $("#pause") && ($("#pause").onclick = () => { pause(); });
   $("#devbtn") && ($("#devbtn").onclick = chooseDevice);
   tl.querySelectorAll(".gap").forEach(g => g.onclick = () => {
     const i = +g.dataset.g;
-    if (pickTeam != null) {
-      if (i === G.gap) { toast("Case déjà choisie par " + cur().name + "."); return; }
+    if (G.phase === "vote" && pickTeam != null) {
+      if (i === G.gap) { toast("Case choisie par " + cur().name + "."); return; }
       const taken = G.chals.find(c => c.gap === i);
       if (taken) { toast("Case déjà votée par " + G.players[taken.team].name + "."); return; }
-      const team = pickTeam; pickTeam = null;
-      dispatch({ t: "vote", team, gap: i });
+      pickTeam = null;
+      dispatch({ t: "vote", gap: i });
       if (isGuest()) render();
-    } else {
-      if (G.chals.some(c => c.gap === i)) { toast("Cette case a déjà un vote."); return; }
+      return;
+    }
+    if (G.phase === "listen" && activeHere()) {
       dispatch({ t: "gap", i });
+      if (isGuest()) G.gap = i; // affichage immédiat en attendant l'arbitre
+      openAnswer();
     }
   });
-  $("#validate") && ($("#validate").onclick = () => {
-    if (pickTeam != null) { toast("Termine le vote en cours ou annule-le."); return; }
-    dispatch({ t: "validate" });
-  });
-  $("#chal") && ($("#chal").onclick = startChallenge);
-  $("#myvote") && ($("#myvote").onclick = () => { pickTeam = myTeam(); render(); });
-  $("#unvote") && ($("#unvote").onclick = () => dispatch({ t: "unvote" }));
-  $("#chalcancel") && ($("#chalcancel").onclick = () => { pickTeam = null; render(); });
-  const clear = e => { if (e) e.preventDefault(); dispatch({ t: "clearvotes" }); };
-  $("#chalclear") && ($("#chalclear").onclick = () => clear());
-  $("#chalclear2") && ($("#chalclear2").onclick = clear);
+  $("#answer") && ($("#answer").onclick = openAnswer);
+  $("#vote") && ($("#vote").onclick = () => { pickTeam = G.voteQueue[G.voteIdx]; render(); });
+  $("#pass") && ($("#pass").onclick = () => dispatch({ t: "pass" }));
+  $("#votecancel") && ($("#votecancel").onclick = () => { pickTeam = null; render(); });
   $("#next") && ($("#next").onclick = () => dispatch({ t: "next" }));
   $("#revcard") && ($("#revcard").onclick = e => { if (!e.target.closest(".embedslot")) showResult(); });
   $("#bonus") && ($("#bonus").onclick = () => { if (!G.bonus && navigator.vibrate) navigator.vibrate(40); dispatch({ t: "bonus" }); });
@@ -1209,7 +1317,7 @@ async function playCurrent() {
       setStatus("");
       const ok = await playEmbedded(uri);
       if (G.card !== s.id) return;
-      setStatus(ok ? "" : "👇 Touche ▶ dans le lecteur en bas de l'écran");
+      setStatus(ok ? "" : "👉 Touche ▶ à droite du lecteur pour entendre la musique");
       return;
     }
     const res = await playUri(uri);
@@ -1283,21 +1391,6 @@ async function openFallback() {
   location.href = "https://open.spotify.com/track/" + uri.split(":").pop();
 }
 
-const votersLeft = () => G.players.map((pl, i) => ({ pl, i }))
-  .filter(x => x.i !== G.turn && (x.pl.tokens || 0) > 0 && !(G.chals || []).some(c => c.team === x.i));
-function startChallenge() {
-  const all = G.players.map((pl, i) => ({ pl, i })).filter(x => x.i !== G.turn);
-  const voted = i => (G.chals || []).some(c => c.team === i);
-  sheet(`<h2>Quelle équipe vote ?</h2><p class="muted">Chaque équipe mise 1 🪙 et vote sur une case libre (une seule fois par tour).</p>
-    ${all.map(x => {
-      const n = x.pl.tokens || 0, dis = n === 0 || voted(x.i);
-      return `<button class="btn sec" data-t="${x.i}" ${dis ? "disabled" : ""}>⚔️ ${esc(x.pl.name)} · ${n} 🪙${voted(x.i) ? " · a déjà voté" : n === 0 ? " · plus de jeton" : ""}</button>`;
-    }).join("")}
-    <button class="btn ghost" id="t_close">Annuler</button>`, { t_close: closeSheet });
-  document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => {
-    closeSheet(); pickTeam = +b.dataset.t; render();
-  });
-}
 function exportSongs() {
   const c = LS.get("ids2", {}) || {};
   let found = 0;
