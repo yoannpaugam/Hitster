@@ -53,7 +53,7 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 .top .stats{font-size:14px;color:var(--muted)}
 .iconbtn{background:var(--card);border:1px solid var(--line);color:var(--text);border-radius:12px;
   width:44px;height:44px;font-size:20px}
-.mystery{margin:12px 0 8px;border-radius:20px;padding:16px;min-height:132px;
+.mystery{flex:none;margin:10px 0 6px;border-radius:20px;padding:16px;min-height:132px;
   background:linear-gradient(135deg,#2b2140,#1b1527);border:1px solid var(--line);
   display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;position:relative}
 .mystery .q{font-family:Georgia,serif;font-size:54px;color:var(--gold);line-height:1}
@@ -70,7 +70,7 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
   color:var(--text);font-size:15px;font-weight:600}
 .status{font-size:13px;color:var(--muted);min-height:18px;text-align:center}
 
-.tlwrap{flex:1;min-height:0;position:relative;border-radius:var(--r);background:var(--bg2);border:1px solid var(--line);overflow:hidden}
+.tlwrap{flex:1;min-height:90px;position:relative;border-radius:var(--r);background:var(--bg2);border:1px solid var(--line);overflow:hidden}
 .timeline{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .teambadge{display:inline-block;background:var(--gold);color:#1a1206;font-weight:900;padding:6px 12px;border-radius:10px;font-size:18px}
 .bigplay{width:84px;height:84px;border-radius:50%;border:0;background:var(--gold);color:#1a1206;font-size:34px;margin-top:4px}
@@ -100,6 +100,10 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 .tokens .me{color:var(--gold);font-weight:800;font-size:15px}
 .gap.chal{border-color:var(--ko);border-style:solid;background:rgba(255,107,107,.18);color:#ffb3b3}
 .gap.sel.chal{background:var(--gold)}
+.lvlrow .btn{padding:12px 4px;font-size:15px}
+.content{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;margin:0 -16px;padding:0 16px 8px}
+.footer{flex:none;padding-top:8px;border-top:1px solid var(--line);margin:0 -16px;padding-left:16px;padding-right:16px}
+.footer .btn{margin:6px 0 0}
 /* Curseur de période */
 .range{position:relative;height:44px;margin:4px 6px 0}
 .range .track{position:absolute;left:0;right:0;top:19px;height:6px;border-radius:6px;background:var(--line)}
@@ -143,7 +147,7 @@ body.withbar .screen{padding-bottom:100px}
   <div id="embed"></div>
   <div class="mask"><b>🎵 Musique mystère</b><span>Si rien ne joue, touche ▶ juste ici →</span></div>
 </div>
-<script src="songs.js?v=10"></script>
+<script src="songs.js?v=11"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -168,12 +172,12 @@ function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.fl
 const SONG = SONGS.map((s, i) => ({ id: i, film: s[0], year: s[1], composer: s[2], track: s[3], orig: s[4] || s[0],
   level: s[5] === "F" ? "facile" : "moyen", sid: s[6] || "" }));
 if (!SONG.some(s => s.level === "facile")) setTimeout(() => toast("Liste des musiques pas à jour (songs.js) : recharge la page."), 800);
-const LEVELS = { facile: "Facile", moyen: "Moyen" };
+const LEVELS = { facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
 
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "10 (votes)";
+const APP_VERSION = "12 (boutons fixes)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -421,7 +425,7 @@ const save = () => LS.set("game", G);
 const cur = () => G.players[G.turn];
 
 const YEAR_MIN = Math.min(...SONG.map(s => s.year)), YEAR_MAX = Math.max(...SONG.map(s => s.year));
-const songsIn = (a, b, lvl = "moyen") => SONG.filter(s => s.year >= a && s.year <= b && s.level === lvl);
+const songsIn = (a, b, lvl = "moyen") => SONG.filter(s => s.year >= a && s.year <= b && (lvl === "difficile" || s.level === lvl));
 const opt = () => ({ level: LS.get("level", "facile"), yMin: LS.get("yMin", YEAR_MIN), yMax: LS.get("yMax", YEAR_MAX) });
 function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moyen", tokens = 3) {
   const deck = shuffle(songsIn(yMin, yMax, level).map(s => s.id));
@@ -552,16 +556,20 @@ let optBack = "home";
 function viewOptions() {
   const lvl = opt().level;
   const cnt = l => songsIn(YEAR_MIN, YEAR_MAX, l).length;
-  return `<div class="screen scroll">
+  return `<div class="screen">
     <div class="top"><h2><svg class="ico big" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></g><g fill="currentColor" stroke="var(--card)" stroke-width="1.5"><circle cx="9" cy="6" r="2.6"/><circle cx="15" cy="12" r="2.6"/><circle cx="7" cy="18" r="2.6"/></g></svg> Options de partie</h2><button class="iconbtn" id="back">✕</button></div>
+    <div class="content">
     <label>Niveau</label>
-    <div class="row">
+    <div class="row lvlrow">
       <button class="btn ${lvl === "facile" ? "" : "sec"}" data-lvl="facile">😀 Facile<br><span style="font-weight:500;font-size:13px">${cnt("facile")} musiques</span></button>
       <button class="btn ${lvl === "moyen" ? "" : "sec"}" data-lvl="moyen">🤔 Moyen<br><span style="font-weight:500;font-size:13px">${cnt("moyen")} musiques</span></button>
+      <button class="btn ${lvl === "difficile" ? "" : "sec"}" data-lvl="difficile">🔥 Difficile<br><span style="font-weight:500;font-size:13px">${cnt("difficile")} musiques</span></button>
     </div>
-    <p class="muted">${lvl === "facile"
-      ? "Facile : uniquement les films et thèmes les plus célèbres (Star Wars, Gladiator, Forrest Gump, Le Parrain, Jurassic Park, Dune…)."
-      : "Moyen : moins de blockbusters, et pour les grands films des morceaux moins évidents (ex. les funérailles de Padmé plutôt que le thème de Star Wars)."}</p>
+    <p class="muted">${({
+      facile: "Facile : uniquement les thèmes célèbres des films les plus connus (Star Wars, Gladiator, Forrest Gump, Le Parrain, Jurassic Park, Dune…).",
+      moyen: "Moyen : moins de blockbusters, et pour les grands films des morceaux moins évidents (ex. les funérailles de Padmé plutôt que le thème de Star Wars).",
+      difficile: "Difficile : toute la liste, y compris les films et compositeurs les plus confidentiels."
+    })[lvl]}</p>
     <label>Période</label>
     <div class="box" style="margin-top:0">
       <div class="yearsel"><span class="yy" id="yminv"></span><span class="muted" id="ycount"></span><span class="yy" id="ymaxv"></span></div>
@@ -575,7 +583,8 @@ function viewOptions() {
         <button data-p="2000-${YEAR_MAX}">Depuis 2000</button>
       </div>
     </div>
-    <button class="btn" id="ok">Valider</button>
+    </div>
+    <div class="footer"><button class="btn" id="ok">Valider</button></div>
   </div>`;
 }
 function bindOptions() {
@@ -607,8 +616,9 @@ function bindOptions() {
 
 /* ---------- Préparation de partie ---------- */
 function viewSetup() {
-  return `<div class="screen scroll">
+  return `<div class="screen">
     <div class="top"><h2>Nouvelle partie</h2><button class="iconbtn" id="back">✕</button></div>
+    <div class="content">
     <label>Nombre d'équipes</label>
     <select id="teams">${[1, 2, 3, 4, 5, 6, 7, 8].map(v => `<option value="${v}" ${v === (+($("#teams") && $("#teams").value) || LS.get("teams", 2)) ? "selected" : ""}>${v} équipe${v > 1 ? "s" : ""}</option>`).join("")}</select>
     <label>Options de partie</label>
@@ -630,7 +640,8 @@ function viewSetup() {
       &nbsp;&nbsp;– Si elle a raison et l'équipe qui joue a tort, elle gagne la carte (et dépense son jeton).<br>
       • On passe à l'équipe suivante. La première à atteindre l'objectif gagne.
     </div>
-    <button class="btn" id="start">Lancer le jeu</button>
+    </div>
+    <div class="footer"><button class="btn" id="start">Lancer le jeu</button></div>
   </div>`;
 }
 function bindSetup() {
@@ -918,9 +929,9 @@ function viewWin() {
   const w = G.players[G.winner];
   const ranking = [...G.players].sort((a, b) => b.cards.length - a.cards.length)
     .map(pl => `<div class="score"><b>${esc(pl.name)}</b><span>${pl.cards.length} cartes</span></div>`).join("");
-  return `<div class="screen scroll win"><div class="trophy">🏆</div><h1>${esc(w.name)}</h1><p class="muted">remporte la partie !</p>
-    <div class="box" style="text-align:left">${ranking}</div>
-    <button class="btn" id="again">Rejouer</button><button class="btn sec" id="home">Accueil</button></div>`;
+  return `<div class="screen win"><div class="trophy">🏆</div><h1>${esc(w.name)}</h1><p class="muted">remporte la partie !</p>
+    <div class="content"><div class="box" style="text-align:left">${ranking}</div></div>
+    <div class="footer"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="home">Accueil</button></div></div>`;
 }
 function bindWin() {
   $("#again").onclick = () => { G = null; LS.del("game"); go("setup"); };
