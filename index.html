@@ -245,8 +245,8 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
   <div class="mask"><b>🎵 Musique mystère</b><span>Touche ▶ pour lancer la musique →</span></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=27"></script>
-<script src="levels.js?v=27"></script>
+<script src="songs.js?v=28"></script>
+<script src="levels.js?v=28"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -311,7 +311,7 @@ const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Dif
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "27 (Kids)";
+const APP_VERSION = "28 (Kids en VF)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -399,6 +399,10 @@ async function resolveSong(s) {
       if (t.artists.some(a => norm(a.name).includes(ln))) sc += 2;
       if (name.includes(tn) || (name.length > 3 && tn.includes(name))) sc += 3;
       if (fn && album.includes(fn)) sc += 1;
+      const bad = /karaok|instrumental|live|orchestr|cover|piano|lullab|berceuse|remix|acoustic|acoustique|tribute|8 bit|music box|reprise|version longue|extended/;
+      if (bad.test(name + " " + album) && !bad.test(tn)) sc -= 3;
+      if (/bande originale|soundtrack|original motion picture|b o |vf|version francaise/.test(album)) sc += 1;
+      if (s.level === "kids" && /francais|vf|version francaise/.test(album)) sc += 1;
       if (sc > bestScore) { bestScore = sc; best = t; }
     }
     if (bestScore >= 5) break;
@@ -625,18 +629,34 @@ function deckFor(a, b, lvl, need = 0) {
 }
 const opt = () => ({ level: LS.get("level", "facile"), yMin: LS.get("yMin", YEAR_MIN), yMax: LS.get("yMax", YEAR_MAX) });
 function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moyen", tokens = 3, names = []) {
-  const deck = shuffle(deckFor(yMin, yMax, level, nTeams + 5));
+  const deck = spreadDeck(deckFor(yMin, yMax, level, nTeams + 5), level === "kids" ? 10 : 6);
   const kids = level === "kids";
   const players = Array.from({ length: nTeams }, (_, i) => ({ name: cleanName(names[i]) || "Équipe " + (i + 1), cards: kids ? [] : [deck.pop()], tokens: kids ? 0 : tokens }));
   G = { players, target, deck, yMin, yMax, level, kids, turn: 0, card: null, phase: "ready", gap: null, result: null, winner: null };
   drawCard(); save();
 }
 function drawCard() {
-  if (!G.deck.length) { G.deck = shuffle(deckFor(G.yMin || YEAR_MIN, G.yMax || YEAR_MAX, G.level || "moyen").filter(id => !G.players.some(p => p.cards.includes(id)))); }
+  if (!G.deck.length) { G.deck = spreadDeck(deckFor(G.yMin || YEAR_MIN, G.yMax || YEAR_MAX, G.level || "moyen").filter(id => !G.players.some(p => p.cards.includes(id))), G.kids ? 10 : 6); }
   // phase : "ready" (pas encore écouté) → "listen" (musique lancée, choix de la case) → "revealed"
   G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.bonus = false; G.answer = null; G.curUri = null;
 }
 const cleanName = n => String(n || "").replace(/\s+/g, " ").trim().slice(0, 18);
+// Mélange en espaçant les morceaux d'un même film : on place d'abord les films qui ont le plus de morceaux restants
+function spreadDeck(ids, gap) {
+  const pool = shuffle(ids.slice()), out = [], left = {};
+  pool.forEach(id => { const f = SONG[id].film; left[f] = (left[f] || 0) + 1; });
+  while (pool.length) {
+    const recent = new Set(out.slice(-gap).map(id => SONG[id].film));
+    let best = -1;
+    pool.forEach((id, i) => {
+      const f = SONG[id].film; if (recent.has(f)) return;
+      if (best < 0 || left[f] > left[SONG[pool[best]].film]) best = i;
+    });
+    if (best < 0) best = 0;
+    const id = pool.splice(best, 1)[0]; left[SONG[id].film]--; out.push(id);
+  }
+  return out.reverse(); // la pioche se tire par la fin
+}
 const sortedCards = p => p.cards.map(id => SONG[id]).sort((a, b) => a.year - b.year);
 
 /* ================= Navigation ================= */
@@ -796,10 +816,10 @@ function viewOptions() {
       <button class="btn ${lvl === "difficile" ? "" : "sec"}" data-lvl="difficile">🔥 Difficile<br><span style="font-weight:500;font-size:13px">${cnt("difficile")} musiques</span></button>
     </div>
     <p class="muted">${({
-      kids: "Kids : dès 6 ans. Génériques de dessins animés et chansons de films pour enfants (Disney, Pixar…). On devine seulement le titre du film ou de la série : pas de date, pas de vote, pas de jeton.",
-      facile: "Facile : pour les cinéphiles occasionnels. Surtout des chansons de films célèbres, les thèmes les plus iconiques des grandes sagas et des génériques de séries cultes.",
-      moyen: "Moyen : des films connus mais moins de blockbusters, et pour les grands films des morceaux moins évidents (ex. les funérailles de Padmé plutôt que le thème de Star Wars). Plus quelques génériques de séries.",
-      difficile: "Difficile : toute la liste des films, y compris les plus anciens et les plus confidentiels (sans les séries)."
+      kids: "Kids : dès 6 ans. Dessins animés et chansons Disney en français. On devine juste le titre.",
+      facile: "Facile : chansons de films célèbres, grandes sagas et génériques de séries cultes.",
+      moyen: "Moyen : films connus, moins de blockbusters et des morceaux moins évidents.",
+      difficile: "Difficile : toutes les musiques de films, même les plus anciennes et confidentielles."
     })[lvl]}</p>
     ${lvl === "kids" ? "" : `<label>Période</label>
     <div class="box" style="margin-top:0">
