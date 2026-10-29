@@ -23,7 +23,7 @@ body{overscroll-behavior:none}
   padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 .screen{flex:1;display:flex;flex-direction:column;min-height:0;padding:16px}
 .scroll{overflow-y:auto}
-h1{font-family:Georgia,"Times New Roman",serif;font-size:42px;margin:24px 0 4px;letter-spacing:.5px}
+h1{font-family:Georgia,"Times New Roman",serif;font-size:38px;margin:6px 0 2px;letter-spacing:.5px}
 h1 span{color:var(--gold)}
 h2{font-size:20px;margin:8px 0 14px}
 p{line-height:1.45}
@@ -45,7 +45,7 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:6px 10px;border-radius:99px;background:var(--card);border:1px solid var(--line)}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--ko)} .dot.on{background:var(--ok)}
 .hero{flex:1 0 auto;display:flex;flex-direction:column;justify-content:center}
-.reel{font-size:64px}
+.reel{font-size:36px;line-height:1}
 
 /* Jeu */
 .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -101,7 +101,7 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 .mytok{font-size:18px;font-weight:800;color:var(--gold)}
 .gap.chal{border-color:var(--ko);border-style:solid;background:rgba(255,107,107,.18);color:#ffb3b3}
 .gap.sel.chal{background:var(--gold)}
-.lvlrow .btn{padding:12px 4px;font-size:15px}
+.lvlrow .btn{padding:12px 4px;font-size:15px;flex:1 1 0;min-width:0;align-self:stretch}
 .content{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;margin:0 -16px;padding:0 16px 8px}
 .footer{flex:none;padding-top:8px;border-top:1px solid var(--line);margin:0 -16px;padding-left:16px;padding-right:16px}
 .footer .btn{margin:6px 0 0}
@@ -114,6 +114,12 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 .turnbar{background:rgba(232,180,76,.12);border:1px solid var(--gold);border-radius:12px;padding:8px 12px;font-size:14px;text-align:center;margin-top:8px}
 .netdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#f0a030;vertical-align:1px}
 .netdot.on{background:var(--ok)}
+.switch{display:flex;gap:12px;align-items:center;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin:10px 0;cursor:pointer}
+.switch input{display:none}
+.switch .sl{flex:none;width:48px;height:28px;border-radius:99px;background:var(--line);position:relative;transition:.2s}
+.switch .sl::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s}
+.switch input:checked + .sl{background:var(--gold)}
+.switch input:checked + .sl::after{left:23px}
 /* Curseur de période */
 .range{position:relative;height:44px;margin:4px 6px 0}
 .range .track{position:absolute;left:0;right:0;top:19px;height:6px;border-radius:6px;background:var(--line)}
@@ -129,13 +135,22 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 .presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .presets button{padding:8px 12px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--text);font-size:14px}
 /* Lecteur intégré */
-#playerbar{position:fixed;left:12px;right:12px;bottom:calc(8px + env(safe-area-inset-bottom));height:80px;border-radius:12px;
+#playerbar{position:fixed;left:16px;width:calc(100% - 32px);top:-200px;height:80px;border-radius:12px;
   overflow:hidden;z-index:15;background:#000;border:1px solid var(--gold)}
 #playerbar iframe{display:block;border:0;width:100%;height:80px}
 #playerbar .mask{position:absolute;left:0;top:0;bottom:0;right:74px;background:var(--card);display:flex;flex-direction:column;
   justify-content:center;padding:0 14px;font-size:14px;z-index:2}
 #playerbar .mask span{color:var(--gold);font-size:13px;margin-top:2px}
-body.withbar .screen{padding-bottom:100px}
+#playerbar.revealed .mask{display:none}
+.embedslot{height:80px;border-radius:12px;background:#000;margin-bottom:8px;width:100%}
+.mystery.bottom{margin:8px 0 0;padding:10px 12px;min-height:0;display:block;text-align:left}
+.mystery.bottom .ctrl{margin-top:0}
+.readyrow{display:flex;align-items:center;gap:14px}
+.readyrow .bigplay{width:56px;height:56px;font-size:24px;margin:0;flex:none}
+.revrow{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.revrow .year{font-size:30px}
+.revrow .film{margin-top:0}
+.tname{margin:4px 0}
 /* Overlays */
 .overlay{position:fixed;inset:0;background:rgba(5,3,9,.78);display:flex;align-items:flex-end;z-index:20}
 .sheet{width:100%;max-height:88dvh;overflow:auto;background:var(--bg2);border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
@@ -192,7 +207,7 @@ const LEVELS = { facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "18 (multi-appareils)";
+const APP_VERSION = "20 (noms d'équipes)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -347,10 +362,23 @@ const playMode = () => LS.get("mode", "embed"); // "embed" = lecteur intégré, 
 let embedApiResolve; const embedApi = new Promise(r => embedApiResolve = r);
 window.onSpotifyIframeApiReady = API => embedApiResolve(API);
 let EmbedCtl = null, embedState = {}, readyWaiters = [];
+let embedUsed = false;
 function showBar(on) {
   const bar = $("#playerbar"); if (!bar) return;
-  bar.hidden = !on; document.body.classList.toggle("withbar", on);
+  on = on && !!$("#embedslot");
+  bar.hidden = !on;
+  bar.classList.toggle("revealed", !!(G && G.phase === "revealed"));
+  placeBar();
 }
+// Le lecteur reste hors de la page (pour ne pas couper la musique) et se cale sur l'emplacement prévu dans la carte
+function placeBar() {
+  const bar = $("#playerbar"), slot = $("#embedslot");
+  if (!bar || bar.hidden || !slot) return;
+  const r = slot.getBoundingClientRect();
+  bar.style.top = r.top + "px"; bar.style.left = r.left + "px"; bar.style.width = r.width + "px";
+}
+window.addEventListener("resize", placeBar);
+setInterval(placeBar, 400);
 function waitReady(ms) { return new Promise(res => { readyWaiters.push(res); setTimeout(res, ms); }); }
 async function getEmbed(uri) {
   if (EmbedCtl) return { c: EmbedCtl, fresh: false };
@@ -366,8 +394,9 @@ async function getEmbed(uri) {
   });
 }
 async function playEmbedded(uri) {
-  showBar(true);
+  embedUsed = true; showBar(true);
   const { c, fresh } = await getEmbed(uri);
+  showBar(screen === "game");
   if (fresh) await waitReady(5000);
   else if (embedState.playingURI !== uri) { c.loadUri(uri); await waitReady(5000); }
   else { c.seek(0); }
@@ -442,9 +471,9 @@ const cur = () => G.players[G.turn];
 const YEAR_MIN = Math.min(...SONG.map(s => s.year)), YEAR_MAX = Math.max(...SONG.map(s => s.year));
 const songsIn = (a, b, lvl = "moyen") => SONG.filter(s => s.year >= a && s.year <= b && (lvl === "difficile" || s.level === lvl));
 const opt = () => ({ level: LS.get("level", "facile"), yMin: LS.get("yMin", YEAR_MIN), yMax: LS.get("yMax", YEAR_MAX) });
-function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moyen", tokens = 3) {
+function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moyen", tokens = 3, names = []) {
   const deck = shuffle(songsIn(yMin, yMax, level).map(s => s.id));
-  const players = Array.from({ length: nTeams }, (_, i) => ({ name: "Équipe " + (i + 1), cards: [deck.pop()], tokens }));
+  const players = Array.from({ length: nTeams }, (_, i) => ({ name: cleanName(names[i]) || "Équipe " + (i + 1), cards: [deck.pop()], tokens }));
   G = { players, target, deck, yMin, yMax, level, turn: 0, card: null, phase: "ready", gap: null, result: null, winner: null };
   drawCard(); save();
 }
@@ -453,6 +482,7 @@ function drawCard() {
   // phase : "ready" (pas encore écouté) → "listen" (musique lancée, choix de la case) → "revealed"
   G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.bonus = false;
 }
+const cleanName = n => String(n || "").replace(/\s+/g, " ").trim().slice(0, 18);
 const sortedCards = p => p.cards.map(id => SONG[id]).sort((a, b) => a.year - b.year);
 
 /* ================= Navigation ================= */
@@ -460,11 +490,13 @@ let screen = "home";
 function go(s) { screen = s; render(); }
 function render() {
   const app = $("#app");
+  const fa = document.activeElement, keep = fa && fa.id && fa.tagName === "INPUT" ? { id: fa.id, v: fa.value, s: fa.selectionStart } : null;
   if (screen === "game" && G && G.winner != null) screen = "win";
   if (screen === "game" && !G) screen = NET ? "lobby" : "home";
   app.innerHTML = ({ home: viewHome, settings: viewSettings, options: viewOptions, setup: viewSetup, game: viewGame, win: viewWin, join: viewJoin, lobby: viewLobby })[screen]();
   ({ home: bindHome, settings: bindSettings, options: bindOptions, setup: bindSetup, game: bindGame, win: bindWin, join: bindJoin, lobby: bindLobby })[screen]();
-  showBar(playMode() === "embed" && screen === "game" && G && G.phase !== "ready" && activeHere() && !!EmbedCtl);
+  if (keep) { const el = document.getElementById(keep.id); if (el) { el.value = keep.v; el.focus(); try { el.setSelectionRange(keep.s, keep.s); } catch {} } }
+  showBar(playMode() === "embed" && screen === "game" && G && G.phase !== "ready" && (activeHere() || !!G.remote) && embedUsed);
 }
 
 /* ---------- Accueil ---------- */
@@ -656,6 +688,7 @@ function bindOptions() {
 /* ---------- Préparation de partie ---------- */
 let setupMulti = LS.get("multi", false);
 function viewSetup() {
+  const nSel = +($("#teams") && $("#teams").value) || LS.get("teams", 2), teamNames = LS.get("teamNames", []);
   return `<div class="screen">
     <div class="top"><h2>Nouvelle partie</h2><button class="iconbtn" id="back">✕</button></div>
     <div class="content">
@@ -667,7 +700,9 @@ function viewSetup() {
     ${setupMulti
       ? `<p class="muted">Tu crées la partie et tu es l'<b>Équipe 1</b>. Les autres équipes la rejoignent depuis leur téléphone avec le code à 5 chiffres qui va s'afficher (accueil → « Rejoindre une partie »).</p>`
       : `<label>Nombre d'équipes</label>
-    <select id="teams">${[1, 2, 3, 4, 5, 6, 7, 8].map(v => `<option value="${v}" ${v === (+($("#teams") && $("#teams").value) || LS.get("teams", 2)) ? "selected" : ""}>${v} équipe${v > 1 ? "s" : ""}</option>`).join("")}</select>`}
+    <select id="teams">${[1, 2, 3, 4, 5, 6, 7, 8].map(v => `<option value="${v}" ${v === nSel ? "selected" : ""}>${v} équipe${v > 1 ? "s" : ""}</option>`).join("")}</select>
+    <label>Noms des équipes</label>
+    ${Array.from({ length: nSel }, (_, i) => `<input class="tname" data-i="${i}" maxlength="18" placeholder="Équipe ${i + 1}" value="${esc(teamNames[i] || "")}">`).join("")}`}
     <label>Options de partie</label>
     <button class="box" id="optsum" style="width:100%;text-align:left;color:var(--text);font-size:15px;margin-top:0">
       <span id="optsumtxt"></span><br><span class="muted">Modifier ›</span></button>
@@ -700,7 +735,10 @@ function bindSetup() {
   $("#optsumtxt").innerHTML = `Niveau <b>${LEVELS[o.level]}</b> · ${o.yMin}–${o.yMax} · <b>${n}</b> musiques`;
   $("#optsum").onclick = () => { optBack = "setup"; go("options"); };
   if (n < need) { $("#start").disabled = true; $("#optsumtxt").innerHTML += `<br><span style="color:var(--ko)">Pas assez de musiques : élargis les options.</span>`; }
-  $("#teams") && ($("#teams").onchange = () => render());
+  $("#teams") && ($("#teams").onchange = () => { LS.set("teams", +$("#teams").value); render(); });
+  document.querySelectorAll(".tname").forEach(inp => inp.oninput = () => {
+    const n = LS.get("teamNames", []); n[+inp.dataset.i] = inp.value; LS.set("teamNames", n);
+  });
   $("#start").onclick = () => {
     const target = +$("#target").value, tokens = +$("#tokens").value, { yMin, yMax, level } = opt();
     LS.set("target", target); LS.set("tokens", tokens);
@@ -708,7 +746,7 @@ function bindSetup() {
     statusMsg = "";
     if (setupMulti) { createMulti({ target, tokens, yMin, yMax, level }); return; }
     const teams = +$("#teams").value; LS.set("teams", teams);
-    newGame(teams, target, yMin, yMax, level, tokens); go("game");
+    newGame(teams, target, yMin, yMax, level, tokens, LS.get("teamNames", [])); go("game");
   };
 }
 
@@ -729,7 +767,8 @@ function myTeam() {
   return t == null ? null : t;
 }
 const lobbyTeams = () => Object.entries((LOBBY || {}).devices || {})
-  .map(([cid, team]) => ({ team, me: cid === myCid })).sort((a, b) => a.team - b.team);
+  .map(([cid, team]) => ({ team, me: cid === myCid, name: lobbyName(cid, team) })).sort((a, b) => a.team - b.team);
+const lobbyName = (cid, team) => cleanName(((LOBBY || {}).names || {})[cid]) || "Équipe " + (team + 1);
 
 function netStart() {
   if (mq) { try { mq.end(true); } catch {} mq = null; }
@@ -806,6 +845,11 @@ function onAct(a) {
     LS.set("lobby", LOBBY); publishState(); if (screen === "lobby") render();
     return;
   }
+  if (a.t === "name") {
+    LOBBY.names = LOBBY.names || {}; LOBBY.names[a.cid] = cleanName(a.name);
+    LS.set("lobby", LOBBY); publishState(); if (screen === "lobby") render();
+    return;
+  }
   if (a.t === "leave") {
     if (!G && LOBBY.devices[a.cid] != null && a.cid !== myCid) { delete LOBBY.devices[a.cid]; renumberLobby(); }
     LS.set("lobby", LOBBY); publishState(); if (screen === "lobby") render();
@@ -827,9 +871,10 @@ function onState(m) {
   postState(prev);
 }
 function startMulti() {
-  const o = LOBBY.opts, n = Object.keys(LOBBY.devices).length;
-  newGame(n, o.target, o.yMin, o.yMax, o.level, o.tokens);
-  G.multi = true;
+  const o = LOBBY.opts, n = Object.keys(LOBBY.devices).length, names = [];
+  Object.entries(LOBBY.devices).forEach(([cid, team]) => { names[team] = lobbyName(cid, team); });
+  newGame(n, o.target, o.yMin, o.yMax, o.level, o.tokens, names);
+  G.multi = true; G.remote = !!o.remote; G.playSeq = 0;
   const prev = null; afterChange(prev);
 }
 
@@ -863,9 +908,14 @@ function viewLobby() {
         <div class="bigcode">${esc(NET ? NET.code : "")}</div>
         ${host ? `<div class="muted">Les autres équipes ouvrent le jeu → <b>Rejoindre une partie</b> → saisissent ce code.</div>` : ""}
       </div>
-      ${!host ? `<p style="text-align:center;font-size:17px">${me != null ? `Tu es <span class="teambadge">Équipe ${me + 1}</span>` : LOBBY ? "Connexion à la partie…" : "Recherche de la partie…"}</p>` : ""}
+      ${me != null ? `<label>Nom de ton équipe</label>
+        <input id="myname" maxlength="18" placeholder="Équipe ${me + 1}" value="${esc(((LOBBY || {}).names || {})[myCid] || "")}">`
+        : `<p style="text-align:center;font-size:17px">${LOBBY ? "Connexion à la partie…" : "Recherche de la partie…"}</p>`}
+      ${host ? `<label class="switch"><input type="checkbox" id="remote" ${LOBBY.opts.remote ? "checked" : ""}><span class="sl"></span>
+          <span><b>🌍 On joue à distance</b><br><span class="muted">${LOBBY.opts.remote ? "La musique est diffusée sur tous les téléphones." : "Tous dans la même pièce : seul le téléphone de l'équipe en jeu diffuse la musique."}</span></span></label>`
+        : LOBBY ? `<p class="muted" style="text-align:center">${LOBBY.opts && LOBBY.opts.remote ? "🌍 Partie à distance : la musique sera diffusée sur ton téléphone." : "🏠 Partie en présence : la musique sort du téléphone de l'équipe en jeu."}</p>` : ""}
       <label>Équipes connectées (${teams.length})</label>
-      ${teams.map(t => `<div class="score"><b>Équipe ${t.team + 1}</b><span class="muted">${t.me ? "ce téléphone" : t.team === 0 ? "créateur" : "✓ connectée"}</span></div>`).join("") || `<p class="muted">—</p>`}
+      ${teams.map(t => `<div class="score"><b>${esc(t.name)}</b><span class="muted">${t.me ? "ce téléphone" : t.team === 0 ? "créateur" : "✓ connectée"}</span></div>`).join("") || `<p class="muted">—</p>`}
       <p class="muted" style="margin-top:12px"><span class="netdot ${netOnline ? "on" : ""}"></span> ${netOnline ? "Connecté au relais" : "Connexion au relais…"}</p>
     </div>
     <div class="footer">${host
@@ -876,12 +926,23 @@ function viewLobby() {
 function bindLobby() {
   $("#back").onclick = () => { if (confirm(isHost() ? "Annuler cette partie pour tout le monde ?" : "Quitter la salle d'attente ?")) leaveMulti(); };
   $("#go") && ($("#go").onclick = startMulti);
+  let nameTimer;
+  $("#myname") && ($("#myname").oninput = e => {
+    clearTimeout(nameTimer);
+    const v = e.target.value;
+    nameTimer = setTimeout(() => {
+      if (isHost()) { LOBBY.names = LOBBY.names || {}; LOBBY.names[myCid] = cleanName(v); LS.set("lobby", LOBBY); publishState(); }
+      else sendAct({ t: "name", name: v });
+    }, 500);
+  });
+  $("#remote") && ($("#remote").onchange = e => { LOBBY.opts.remote = e.target.checked; LS.set("lobby", LOBBY); publishState(); render(); });
 }
 
 /* ================= Actions de jeu (identiques en local et à plusieurs) ================= */
 let pickTeam = null;      // équipe en train de choisir sa case de vote (sur cet appareil)
 let shownSeq = null;      // dernier résultat affiché dans la fenêtre
 let wantPlayNext = false; // relancer la lecture quand la nouvelle carte arrive
+let lastPlaySeq = null;   // dernière lecture diffusée (parties à distance)
 function ensureG() {
   if (!G) return;
   if (!Array.isArray(G.chals)) G.chals = [];
@@ -916,6 +977,10 @@ function postState(prev) {
   if (["home", "lobby", "join", "setup"].includes(screen)) screen = "game";
   render();
   if (newCard && wantPlayNext) { wantPlayNext = false; if (activeHere()) playCurrent(); }
+  if (G.multi && G.remote && !activeHere()) {
+    if (!prev || lastPlaySeq == null) lastPlaySeq = G.playSeq;
+    else if (G.playSeq !== lastPlaySeq) { lastPlaySeq = G.playSeq; if (G.phase === "listen") playCurrent(); }
+  } else lastPlaySeq = G.playSeq;
   if (G.phase === "revealed" && G.resultSeq !== shownSeq) {
     shownSeq = G.resultSeq;
     if (prev && prev.phase !== "revealed") {
@@ -929,8 +994,9 @@ function applyAction(a) {
   ensureG();
   const multi = !!G.multi, active = !multi || a.by === G.turn;
   switch (a.t) {
-    case "play": if (!active || G.phase !== "ready") return false; G.phase = "listen"; return true;
-    case "redraw": if (!active) return false; drawCard(); G.phase = "listen"; return true;
+    case "play": if (!active || G.phase !== "ready") return false; G.phase = "listen"; G.playSeq = (G.playSeq || 0) + 1; return true;
+    case "replay": if (!active || G.phase !== "listen") return false; G.playSeq = (G.playSeq || 0) + 1; return true;
+    case "redraw": if (!active) return false; drawCard(); G.phase = "listen"; G.playSeq = (G.playSeq || 0) + 1; return true;
     case "gap":
       if (!active || G.phase !== "listen" || G.chals.some(c => c.gap === a.i)) return false;
       G.gap = a.i; return true;
@@ -1013,24 +1079,23 @@ function viewGame() {
   const multi = !!G.multi, me = myTeam(), active = activeHere();
   const mine = multi && me != null ? G.players[me] : p;
   const cards = sortedCards(p), chals = G.chals;
+  const hearsHere = active || !!G.remote;
+  const slot = playMode() === "embed" && hearsHere && ph !== "ready" ? `<div id="embedslot" class="embedslot"></div>` : "";
   let mystery;
   if (ph === "ready") {
     mystery = active
-      ? `<div class="mystery"><div class="muted" style="margin-bottom:6px">Nouvelle carte mystère</div>
-          <button class="bigplay" id="play" aria-label="Lecture">▶</button>
-          <div class="muted" style="margin-top:8px">Appuie sur lecture</div></div>`
-      : `<div class="mystery"><div class="q">?</div><div class="muted">${esc(p.name)} va lancer la musique…</div></div>`;
+      ? `<div class="mystery bottom"><div class="readyrow"><button class="bigplay" id="play" aria-label="Lecture">▶</button>
+          <div><b>Nouvelle carte mystère</b><div class="muted">Appuie sur lecture</div></div></div></div>`
+      : `<div class="mystery bottom"><div class="muted" style="text-align:center">${esc(p.name)} va lancer la musique…</div></div>`;
   } else if (ph === "listen") {
-    mystery = `<div class="mystery"><div class="q">?</div>${active
-      ? `<div class="ctrl"><button id="replay">↺ Réécouter</button><button id="pause">⏸ Pause</button>${playMode() === "embed" ? "" : `<button id="devbtn">🔊 Appareil</button>`}</div>`
-      : `<div class="muted">${esc(p.name)} écoute et choisit sa case…</div>`}</div>`;
+    mystery = `<div class="mystery bottom">${slot}${hearsHere
+      ? `<div class="ctrl"><button id="replay">↺ Réécouter</button><button id="pause">⏸ Pause</button>${playMode() === "embed" || !active ? "" : `<button id="devbtn">🔊 Appareil</button>`}</div>`
+      : `<div class="muted" style="text-align:center">${esc(p.name)} écoute et choisit sa case…</div>`}</div>`;
   } else {
-    mystery = `<div class="mystery reveal ${G.result.ok ? "ok" : "ko"}" id="revcard" role="button" title="Revoir les résultats">
-      <div class="year">${s.year}</div>
-      <div class="film">${esc(s.film)}</div>
-      <div class="track">« ${esc(s.track)} »</div>
-      <div class="comp">${esc(s.composer)}</div>
-      </div>`;
+    mystery = `<div class="mystery bottom reveal ${G.result.ok ? "ok" : "ko"}" id="revcard" role="button" title="Revoir les résultats">
+      <div class="revrow"><div class="year">${s.year}</div>
+        <div><div class="film">${esc(s.film)}</div><div class="track">« ${esc(s.track)} » · <span class="muted">${esc(s.composer)}</span></div></div></div>
+      ${slot}</div>`;
   }
   const canTap = ph === "listen" && (pickTeam != null || active);
   let tl = "";
@@ -1080,11 +1145,11 @@ function viewGame() {
         <span class="mytok">${mine.tokens || 0} 🪙</span></div>
       <div class="stats" style="margin-top:6px">${mine.cards.length}/${G.target} cartes${multi ? ` · <span id="netdot" class="netdot ${netOnline ? "on" : ""}"></span>` : ""}</div></div>
       <button class="iconbtn" id="menu" aria-label="Menu">☰</button></div>
-    ${multi && !active ? `<div class="turnbar">🎧 Au tour de <b>${esc(p.name)}</b> · sa frise ci-dessous</div>` : ""}
+    ${multi && !active ? `<div class="turnbar">🎧 Au tour de <b>${esc(p.name)}</b> · sa frise ci-dessous${G.remote ? " · 🌍" : ""}</div>` : ""}
+    <div class="status" id="status" style="margin-top:6px">${esc(statusMsg)}</div>
+    ${hint ? `<div class="hint" style="margin-top:6px">${hint}</div>` : ""}
+    <div class="tlwrap" style="margin-top:8px"><div class="fade-top"></div><div class="timeline" id="tl">${tl}</div><div class="fade-bot"></div></div>
     ${mystery}
-    <div class="status" id="status">${esc(statusMsg)}</div>
-    ${hint ? `<div class="hint">${hint}</div>` : ""}
-    <div class="tlwrap"><div class="fade-top"></div><div class="timeline" id="tl">${tl}</div><div class="fade-bot"></div></div>
     ${actions}
   </div>`;
 }
@@ -1100,7 +1165,7 @@ function bindGame() {
 
   $("#menu").onclick = openMenu;
   $("#play") && ($("#play").onclick = () => { dispatch({ t: "play" }); playCurrent(); });
-  $("#replay") && ($("#replay").onclick = playCurrent);
+  $("#replay") && ($("#replay").onclick = () => { if (G.multi && G.remote && activeHere()) dispatch({ t: "replay" }); playCurrent(); });
   $("#pause") && ($("#pause").onclick = () => { pause(); });
   $("#devbtn") && ($("#devbtn").onclick = chooseDevice);
   tl.querySelectorAll(".gap").forEach(g => g.onclick = () => {
@@ -1129,7 +1194,7 @@ function bindGame() {
   $("#chalclear") && ($("#chalclear").onclick = () => clear());
   $("#chalclear2") && ($("#chalclear2").onclick = clear);
   $("#next") && ($("#next").onclick = () => dispatch({ t: "next" }));
-  $("#revcard") && ($("#revcard").onclick = showResult);
+  $("#revcard") && ($("#revcard").onclick = e => { if (!e.target.closest(".embedslot")) showResult(); });
   $("#bonus") && ($("#bonus").onclick = () => { if (!G.bonus && navigator.vibrate) navigator.vibrate(40); dispatch({ t: "bonus" }); });
 }
 async function playCurrent() {
