@@ -127,6 +127,9 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
 .ychip{font-family:Georgia,serif;font-weight:700;color:var(--gold2);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:2px 8px;font-size:14px}
 #playerbar.needtap{animation:needtap 1.1s ease-in-out infinite}
 @keyframes needtap{0%,100%{box-shadow:0 0 0 0 rgba(232,180,76,.0)}50%{box-shadow:0 0 0 6px rgba(232,180,76,.55)}}
+.coin{display:inline-block;width:1em;height:1em;border-radius:50%;vertical-align:-.15em;margin:0 .05em;
+  background:radial-gradient(circle at 35% 30%,#fff6c8 0 12%,#ffd34d 30%,#e8a515 70%,#b47a08 100%);
+  box-shadow:inset 0 0 0 .08em #a86f05,inset 0 0 0 .16em #ffd968}
 /* Curseur de période */
 .range{position:relative;height:44px;margin:4px 6px 0}
 .range .track{position:absolute;left:0;right:0;top:19px;height:6px;border-radius:6px;background:var(--line)}
@@ -192,9 +195,11 @@ const LS = {
   set(k, v) { try { localStorage.setItem("ch_" + k, JSON.stringify(v)); } catch {} },
   del(k) { try { localStorage.removeItem("ch_" + k); } catch {} }
 };
+const COIN = '<span class="coin" aria-label="jeton"></span>';
+const coinify = h => String(h).replace(/🪙/g, COIN);
 function toast(msg, ms = 2800) {
   const old = $(".toast"); if (old) old.remove();
-  const t = document.createElement("div"); t.className = "toast"; t.textContent = msg;
+  const t = document.createElement("div"); t.className = "toast"; t.innerHTML = coinify(esc(msg));
   document.body.appendChild(t); setTimeout(() => t.remove(), ms);
 }
 const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
@@ -214,7 +219,7 @@ const LEVELS = { facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "21 (réponse + votes)";
+const APP_VERSION = "22 (voir la réponse)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -501,7 +506,7 @@ function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moye
 function drawCard() {
   if (!G.deck.length) { G.deck = shuffle(songsIn(G.yMin || YEAR_MIN, G.yMax || YEAR_MAX, G.level || "moyen").map(s => s.id).filter(id => !G.players.some(p => p.cards.includes(id)))); }
   // phase : "ready" (pas encore écouté) → "listen" (musique lancée, choix de la case) → "revealed"
-  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.bonus = false; G.answer = null; G.voteQueue = []; G.voteIdx = 0;
+  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.bonus = false; G.answer = null;
 }
 const cleanName = n => String(n || "").replace(/\s+/g, " ").trim().slice(0, 18);
 const sortedCards = p => p.cards.map(id => SONG[id]).sort((a, b) => a.year - b.year);
@@ -514,7 +519,7 @@ function render() {
   const fa = document.activeElement, keep = fa && fa.id && fa.tagName === "INPUT" ? { id: fa.id, v: fa.value, s: fa.selectionStart } : null;
   if (screen === "game" && G && G.winner != null) screen = "win";
   if (screen === "game" && !G) screen = NET ? "lobby" : "home";
-  app.innerHTML = ({ home: viewHome, settings: viewSettings, options: viewOptions, setup: viewSetup, game: viewGame, win: viewWin, join: viewJoin, lobby: viewLobby })[screen]();
+  app.innerHTML = coinify(({ home: viewHome, settings: viewSettings, options: viewOptions, setup: viewSetup, game: viewGame, win: viewWin, join: viewJoin, lobby: viewLobby })[screen]());
   ({ home: bindHome, settings: bindSettings, options: bindOptions, setup: bindSetup, game: bindGame, win: bindWin, join: bindJoin, lobby: bindLobby })[screen]();
   if (keep) { const el = document.getElementById(keep.id); if (el) { el.value = keep.v; el.focus(); try { el.setSelectionRange(keep.s, keep.s); } catch {} } }
   showBar(playMode() === "embed" && screen === "game" && G && G.phase !== "ready" && (activeHere() || !!G.remote) && embedUsed);
@@ -730,7 +735,7 @@ function viewSetup() {
     <label>Cartes à atteindre pour gagner</label>
     <select id="target">${[5, 8, 10, 12, 15].map(v => `<option ${v === LS.get("target", 10) ? "selected" : ""}>${v}</option>`).join("")}</select>
     <label>Jetons de vote par équipe</label>
-    <select id="tokens">${[0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${v === LS.get("tokens", 3) ? "selected" : ""}>${v ? v + " 🪙" : "Sans votes"}</option>`).join("")}</select>
+    <select id="tokens">${[0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${v === LS.get("tokens", 3) ? "selected" : ""}>${v ? v + " jeton" + (v > 1 ? "s" : "") : "Sans votes"}</option>`).join("")}</select>
     <div class="box muted">
       <b style="color:var(--text)">Déroulé</b><br>
       • Chaque équipe démarre avec une carte révélée sur sa frise.<br>
@@ -931,8 +936,8 @@ function viewLobby() {
         <input id="myname" maxlength="18" placeholder="Équipe ${me + 1}" value="${esc(((LOBBY || {}).names || {})[myCid] || "")}">`
         : `<p style="text-align:center;font-size:17px">${LOBBY ? "Connexion à la partie…" : "Recherche de la partie…"}</p>`}
       ${host ? `<label class="switch"><input type="checkbox" id="remote" ${LOBBY.opts.remote ? "checked" : ""}><span class="sl"></span>
-          <span><b>🌍 On joue à distance</b><br><span class="muted">${LOBBY.opts.remote ? "La musique est diffusée sur tous les téléphones." : "Tous dans la même pièce : seul le téléphone de l'équipe en jeu diffuse la musique."}</span></span></label>`
-        : LOBBY ? `<p class="muted" style="text-align:center">${LOBBY.opts && LOBBY.opts.remote ? "🌍 Partie à distance : la musique sera diffusée sur ton téléphone." : "🏠 Partie en présence : la musique sort du téléphone de l'équipe en jeu."}</p>` : ""}
+          <span><b>On joue à distance</b><br><span class="muted">${LOBBY.opts.remote ? "La musique est diffusée sur tous les téléphones." : "Tous dans la même pièce : seul le téléphone de l'équipe en jeu diffuse la musique."}</span></span></label>`
+        : LOBBY ? `<p class="muted" style="text-align:center">${LOBBY.opts && LOBBY.opts.remote ? "Partie à distance : la musique sera diffusée sur ton téléphone." : "Partie en présence : la musique sort du téléphone de l'équipe en jeu."}</p>` : ""}
       <label>Équipes connectées (${teams.length})</label>
       ${teams.map(t => `<div class="score"><b>${esc(t.name)}</b><span class="muted">${t.me ? "ce téléphone" : t.team === 0 ? "créateur" : "✓ connectée"}</span></div>`).join("") || `<p class="muted">—</p>`}
       <p class="muted" style="margin-top:12px"><span class="netdot ${netOnline ? "on" : ""}"></span> ${netOnline ? "Connecté au relais" : "Connexion au relais…"}</p>
@@ -1013,8 +1018,6 @@ function applyAction(a) {
   if (!G) return false;
   ensureG();
   const multi = !!G.multi, active = !multi || a.by === G.turn;
-  const voter = G.phase === "vote" ? G.voteQueue[G.voteIdx] : null;
-  const canVote = G.phase === "vote" && (!multi || a.by === voter);
   switch (a.t) {
     case "play": if (!active || G.phase !== "ready") return false; G.phase = "listen"; G.playSeq = (G.playSeq || 0) + 1; return true;
     case "replay": if (!active || !["listen", "vote"].includes(G.phase)) return false; G.playSeq = (G.playSeq || 0) + 1; return true;
@@ -1024,18 +1027,23 @@ function applyAction(a) {
       if (!active || G.phase !== "listen" || G.gap == null) return false;
       G.answer = { film: String(a.film || "").slice(0, 80), composer: String(a.composer || "").slice(0, 80) };
       G.phase = "vote"; G.chals = [];
-      G.voteQueue = G.players.map((_, i) => (G.turn + 1 + i) % G.players.length).filter(i => i !== G.turn);
-      G.voteIdx = 0; nextVoter();
       return true;
     }
     case "vote": {
-      if (!canVote) return false;
+      const team = multi ? a.by : a.team;
+      if (G.phase !== "vote" || team == null || team === G.turn) return false;
+      const pl = G.players[team];
+      if (!pl || (pl.tokens || 0) <= 0 || G.chals.some(c => c.team === team)) return false;
       const used = [G.gap, ...G.chals.map(c => c.gap)];
       if (a.gap == null || used.includes(a.gap) || a.gap < 0 || a.gap > cur().cards.length) return false;
-      G.chals.push({ team: voter, gap: a.gap });
-      G.voteIdx++; nextVoter(); return true;
+      G.chals.push({ team, gap: a.gap }); return true;
     }
-    case "pass": if (!canVote) return false; G.voteIdx++; nextVoter(); return true;
+    case "unvote": {
+      const team = multi ? a.by : a.team, n = G.chals.length;
+      if (G.phase !== "vote") return false;
+      G.chals = G.chals.filter(c => c.team !== team); return G.chals.length !== n;
+    }
+    case "reveal": if (!active || G.phase !== "vote") return false; resolveTurn(); return true;
     case "bonus": {
       if (!active || G.phase !== "revealed") return false;
       const pl = cur();
@@ -1054,16 +1062,6 @@ function applyAction(a) {
     case "end": if (multi && a.by !== 0) return false; G.ended = true; return true;
   }
   return false;
-}
-// Passe à la prochaine équipe qui peut voter (jeton + case libre) ; sinon on dévoile la réponse
-function nextVoter() {
-  const gaps = cur().cards.length + 1;
-  while (G.voteIdx < G.voteQueue.length) {
-    const pl = G.players[G.voteQueue[G.voteIdx]];
-    if ((pl.tokens || 0) > 0 && 1 + G.chals.length < gaps) return;
-    G.voteIdx++;
-  }
-  resolveTurn();
 }
 const gapOk = (cards, i, y) => (!cards[i - 1] || cards[i - 1].year <= y) && (!cards[i] || y <= cards[i].year);
 
@@ -1164,11 +1162,11 @@ function viewGame() {
   const multi = !!G.multi, me = myTeam(), active = activeHere();
   const mine = multi && me != null ? G.players[me] : p;
   const cards = sortedCards(p), chals = G.chals;
-  const voter = ph === "vote" ? G.voteQueue[G.voteIdx] : null;
-  const myVoteTurn = ph === "vote" && (!multi || me === voter);
+  const freeGap = 1 + chals.length < cards.length + 1;
+  const canVoteTeam = i => i !== G.turn && (G.players[i].tokens || 0) > 0 && !chals.some(c => c.team === i) && freeGap;
   const hearsHere = active || !!G.remote;
   const slot = playMode() === "embed" && hearsHere && ph !== "ready" ? `<div id="embedslot" class="embedslot"></div>` : "";
-  const ctrl = `<div class="ctrl"><button id="replay">↺ Réécouter</button><button id="pause">⏸ Pause</button>${playMode() === "embed" || !active ? "" : `<button id="devbtn">🔊 Appareil</button>`}</div>`;
+  const ctrl = `<div class="ctrl"><button id="replay">${active ? "↺ Réécouter" : "▶ Écouter"}</button><button id="pause">⏸ Pause</button>${playMode() === "embed" || !active ? "" : `<button id="devbtn">🔊 Appareil</button>`}</div>`;
   let mystery;
   if (ph === "ready") {
     mystery = active
@@ -1206,15 +1204,23 @@ function viewGame() {
         <button class="btn" id="next">Passer à ${esc(G.players[(G.turn + 1) % G.players.length].name)} →</button>`
       : `<button class="btn sec" disabled>En attente de ${esc(p.name)}…</button>`;
   } else if (ph === "vote") {
-    const v = G.players[voter];
-    hint = `🔒 Réponse de ${esc(p.name)} verrouillée · ⚔️ vote de <b>${esc(v.name)}</b> (${v.tokens || 0} 🪙)`;
+    const nv = chals.length;
+    hint = `🔒 Réponse de ${esc(p.name)} verrouillée · ⚔️ ${nv ? nv + " vote" + (nv > 1 ? "s" : "") : "aucun vote pour l'instant"}`;
     if (pickTeam != null) {
       actions = `<button class="btn sec" id="votecancel">Annuler</button>`;
-      hint = `⚔️ <b>${esc(v.name)}</b> : touche une case libre (1 🪙)`;
-    } else if (myVoteTurn) {
-      actions = `<div class="row"><button class="btn sec" id="pass" style="flex:0 0 38%">Passer</button>
-        <button class="btn" id="vote">⚔️ Voter (1 🪙)</button></div>`;
-    } else actions = `<button class="btn sec" disabled>Vote de ${esc(v.name)} en cours…</button>`;
+      hint = `⚔️ <b>${esc(G.players[pickTeam].name)}</b> : touche une case libre (1 🪙)`;
+    } else if (!multi) {
+      const any = G.players.some((_, i) => canVoteTeam(i));
+      actions = `<div class="row">${any ? `<button class="btn sec" id="vote" style="flex:0 0 42%">⚔️ Une équipe vote</button>` : ""}
+        <button class="btn" id="reveal">👁 Voir la réponse</button></div>`;
+    } else if (active) {
+      actions = `<button class="btn" id="reveal">👁 Voir la réponse</button>`;
+    } else {
+      const myVote = chals.find(c => c.team === me);
+      if (myVote) actions = `<button class="btn sec" id="unvote">✕ Retirer mon vote (${esc(gapLabel(cards, myVote.gap))})</button>`;
+      else if (canVoteTeam(me)) actions = `<button class="btn" id="vote">⚔️ Voter (1 🪙 · il t'en reste ${mine.tokens})</button>`;
+      else actions = `<button class="btn sec" disabled>${(mine.tokens || 0) ? "Plus de case libre pour voter" : "Plus de jeton pour voter"}</button>`;
+    }
   } else if (active) {
     actions = `<button class="btn" id="answer" ${G.gap == null || ph === "ready" ? "disabled" : ""}>${G.gap == null ? "Touche une période" : "Proposer film et compositeur"}</button>`;
   } else {
@@ -1225,7 +1231,7 @@ function viewGame() {
         <span class="mytok">${mine.tokens || 0} 🪙</span></div>
       <div class="stats" style="margin-top:6px">${mine.cards.length}/${G.target} cartes${multi ? ` · <span id="netdot" class="netdot ${netOnline ? "on" : ""}"></span>` : ""}</div></div>
       <button class="iconbtn" id="menu" aria-label="Menu">☰</button></div>
-    ${multi && !active ? `<div class="turnbar">🎧 Au tour de <b>${esc(p.name)}</b> · ${p.tokens || 0} 🪙${G.remote ? " · 🌍" : ""}</div>` : ""}
+    ${multi && !active ? `<div class="turnbar">🎧 Au tour de <b>${esc(p.name)}</b> · ${p.tokens || 0} 🪙</div>` : ""}
     <div class="status" id="status" style="margin-top:6px">${esc(statusMsg)}</div>
     ${hint ? `<div class="hint" style="margin-top:6px">${hint}</div>` : ""}
     <div class="tlwrap" style="margin-top:8px"><div class="fade-top"></div><div class="timeline" id="tl">${tl}</div><div class="fade-bot"></div></div>
@@ -1286,8 +1292,8 @@ function bindGame() {
       if (i === G.gap) { toast("Case choisie par " + cur().name + "."); return; }
       const taken = G.chals.find(c => c.gap === i);
       if (taken) { toast("Case déjà votée par " + G.players[taken.team].name + "."); return; }
-      pickTeam = null;
-      dispatch({ t: "vote", gap: i });
+      const team = pickTeam; pickTeam = null;
+      dispatch({ t: "vote", team, gap: i });
       if (isGuest()) render();
       return;
     }
@@ -1298,8 +1304,27 @@ function bindGame() {
     }
   });
   $("#answer") && ($("#answer").onclick = openAnswer);
-  $("#vote") && ($("#vote").onclick = () => { pickTeam = G.voteQueue[G.voteIdx]; render(); });
-  $("#pass") && ($("#pass").onclick = () => dispatch({ t: "pass" }));
+  $("#vote") && ($("#vote").onclick = () => {
+    if (G.multi) { pickTeam = myTeam(); render(); return; }
+    const free = 1 + G.chals.length < cur().cards.length + 1;
+    const list = G.players.map((pl, i) => ({ pl, i })).filter(x => x.i !== G.turn);
+    sheet(`<h2>Quelle équipe vote ?</h2><p class="muted">Chaque équipe peut miser 1 🪙 sur une autre période (une fois par tour).</p>
+      ${list.map(x => {
+        const voted = G.chals.some(c => c.team === x.i), n = x.pl.tokens || 0, dis = voted || !n || !free;
+        return `<button class="btn sec" data-t="${x.i}" ${dis ? "disabled" : ""}>⚔️ ${esc(x.pl.name)} · ${n} 🪙${voted ? " · a voté" : !n ? " · plus de jeton" : ""}</button>`;
+      }).join("")}
+      ${G.chals.length ? `<button class="btn ghost" id="t_clear">Annuler les votes</button>` : ""}
+      <button class="btn ghost" id="t_close">Fermer</button>`, {
+      t_close: closeSheet,
+      t_clear: () => { closeSheet(); G.chals.map(c => c.team).forEach(team => dispatch({ t: "unvote", team })); }
+    });
+    document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => { closeSheet(); pickTeam = +b.dataset.t; render(); });
+  });
+  $("#unvote") && ($("#unvote").onclick = () => dispatch({ t: "unvote" }));
+  $("#reveal") && ($("#reveal").onclick = () => {
+    if (pickTeam != null) { toast("Termine le vote en cours ou annule-le."); return; }
+    dispatch({ t: "reveal" });
+  });
   $("#votecancel") && ($("#votecancel").onclick = () => { pickTeam = null; render(); });
   $("#next") && ($("#next").onclick = () => dispatch({ t: "next" }));
   $("#revcard") && ($("#revcard").onclick = e => { if (!e.target.closest(".embedslot")) showResult(); });
@@ -1307,7 +1332,7 @@ function bindGame() {
 }
 async function playCurrent() {
   const s = SONG[G.card];
-  if (needsLogin(s) && !isLogged()) { setStatus("Ce morceau demande une connexion Spotify (menu ☰ → Réglages)."); return; }
+  if (needsLogin(s) && !isLogged()) { setStatus("Ce morceau n'a pas d'identifiant Spotify dans songs.js : refais l'export de la liste (Réglages)."); return; }
   setStatus("");
   try {
     const uri = await resolveSong(s);
@@ -1430,7 +1455,7 @@ function showResult() {
 function sheet(html, handlers = {}) {
   closeSheet();
   const o = document.createElement("div"); o.className = "overlay"; o.id = "ov";
-  o.innerHTML = `<div class="sheet">${html}</div>`;
+  o.innerHTML = `<div class="sheet">${coinify(html)}</div>`;
   o.onclick = e => { if (e.target === o) closeSheet(); };
   document.body.appendChild(o);
   Object.entries(handlers).forEach(([id, fn]) => { const el = document.getElementById(id); if (el) el.onclick = fn; });
