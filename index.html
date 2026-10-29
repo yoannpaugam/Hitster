@@ -234,24 +234,37 @@ async function resolveSong(s) {
 }
 
 /* ================= Spotify : lecture ================= */
-async function pickDevice() {
+async function listDevices() {
   const r = await api("/me/player/devices");
-  if (!r.ok) return null;
-  const devs = (await r.json()).devices || [];
-  if (!devs.length) return null;
-  const pref = LS.get("device", "");
-  return devs.find(d => d.id === pref) || devs.find(d => d.is_active) || devs.find(d => d.type === "Smartphone") || devs[0];
+  if (!r.ok) return [];
+  return (await r.json()).devices || [];
 }
+let lastPlayError = "";
 async function playUri(uri) {
-  const pref = LS.get("device", "");
   const body = JSON.stringify({ uris: [uri], position_ms: (LS.get("startAt", 0) || 0) * 1000 });
-  let r = await api("/me/player/play" + (pref ? "?device_id=" + encodeURIComponent(pref) : ""), { method: "PUT", body });
-  if (r.ok) return "ok";
-  if (r.status === 403) return "premium";
-  const dev = await pickDevice();
-  if (!dev) return "nodevice";
-  r = await api("/me/player/play?device_id=" + encodeURIComponent(dev.id), { method: "PUT", body });
-  return r.ok ? "ok" : (r.status === 403 ? "premium" : "nodevice");
+  const tryPlay = async id => {
+    const r = await api("/me/player/play" + (id ? "?device_id=" + encodeURIComponent(id) : ""), { method: "PUT", body });
+    if (!r.ok) { try { const j = await r.json(); lastPlayError = r.status + " " + ((j.error && (j.error.reason || j.error.message)) || ""); } catch { lastPlayError = String(r.status); } }
+    return r;
+  };
+  const devs = await listDevices();
+  const pref = LS.get("device", "");
+  const dev = devs.find(d => d.id === pref) || devs.find(d => d.is_active) ||
+    devs.find(d => d.type === "Smartphone") || devs.find(d => d.type === "Computer") || devs[0];
+  if (!dev) {
+    // aucun appareil listé : on tente quand même sur l'appareil actif
+    const r = await tryPlay("");
+    return r.ok ? "ok" : (r.status === 403 ? "premium" : "nodevice");
+  }
+  if (!dev.is_active) {
+    // « réveille » l'appareil en lui transférant la lecture
+    try { await api("/me/player", { method: "PUT", body: JSON.stringify({ device_ids: [dev.id], play: false }) }); } catch {}
+    await sleep(700);
+  }
+  let r = await tryPlay(dev.id);
+  if (!r.ok && r.status !== 403) { await sleep(1200); r = await tryPlay(dev.id); }
+  if (r.ok) { LS.set("lastDevice", dev.name); return "ok"; }
+  return r.status === 403 ? "premium" : "nodevice";
 }
 async function pause() { try { await api("/me/player/pause", { method: "PUT" }); } catch {} }
 async function resume() { try { await api("/me/player/play", { method: "PUT" }); } catch {} }
@@ -500,12 +513,23 @@ function offerFreeSkip() {
   sheet(`<h2>Morceau introuvable</h2><p class="muted">Ce morceau n'a pas été trouvé sur Spotify. On en tire un autre pour la même équipe.</p>
     <button class="btn" id="s_ok">Tirer une autre musique</button>`, { s_ok: () => { closeSheet(); drawCard(); G.phase = "listen"; save(); render(); playCurrent(); } });
 }
-function noDeviceHelp() {
-  sheet(`<h2>Ouvre Spotify</h2>
-    <p>Spotify a besoin d'un appareil « actif » pour jouer la musique :</p>
-    <p class="muted">1. Ouvre l'application Spotify.<br>2. Lance n'importe quel titre puis mets-le en pause.<br>3. Reviens ici et appuie sur « Réessayer ».</p>
+async function noDeviceHelp() {
+  let devs = [];
+  try { devs = await listDevices(); } catch {}
+  const list = devs.length
+    ? `<p class="muted">Appareils détectés — touche celui qui doit jouer :</p>` +
+      devs.map(d => `<button class="btn sec" data-dev="${esc(d.id)}" data-name="${esc(d.name)}">🔊 ${esc(d.name)} <span class="muted">(${esc(d.type)})</span></button>`).join("")
+    : `<p class="muted">Aucun appareil détecté pour l'instant.</p>`;
+  sheet(`<h2>Réveille Spotify</h2>
+    <p>Sur iPhone, Spotify se met en veille dès qu'on le quitte. Pour le garder actif :</p>
+    <p class="muted">1. Ouvre l'application Spotify.<br>2. Lance n'importe quel titre <b>et laisse-le jouer</b> (ne le mets pas en pause).<br>3. Reviens ici et appuie sur « Réessayer » : le jeu remplacera ce titre par la musique mystère.</p>
     <a class="btn sec" href="spotify:" style="text-align:center;text-decoration:none">Ouvrir Spotify</a>
-    <button class="btn" id="s_retry">Réessayer</button>`, { s_retry: () => { closeSheet(); playCurrent(); } });
+    ${list}
+    <button class="btn" id="s_retry">Réessayer</button>
+    <p class="muted" style="font-size:12px">Détail technique : ${esc(lastPlayError || "aucun appareil")}</p>`, { s_retry: () => { closeSheet(); playCurrent(); } });
+  document.querySelectorAll("[data-dev]").forEach(b => b.onclick = () => {
+    LS.set("device", b.dataset.dev); LS.set("deviceName", b.dataset.name); closeSheet(); playCurrent();
+  });
 }
 
 function validate() {
