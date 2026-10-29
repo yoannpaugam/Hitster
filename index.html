@@ -105,6 +105,11 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 .content{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;margin:0 -16px;padding:0 16px 8px}
 .footer{flex:none;padding-top:8px;border-top:1px solid var(--line);margin:0 -16px;padding-left:16px;padding-right:16px}
 .footer .btn{margin:6px 0 0}
+.rlines{margin:12px 0 4px}
+.rline{padding:10px 12px;border-radius:12px;background:var(--card);border:1px solid var(--line);margin:6px 0;font-size:15px;font-weight:600;line-height:1.35}
+.rline.ok{border-color:var(--ok);color:var(--ok)}
+.rline.ko{border-color:var(--ko);color:#ffb3b3}
+#revcard{cursor:pointer}
 /* Curseur de période */
 .range{position:relative;height:44px;margin:4px 6px 0}
 .range .track{position:absolute;left:0;right:0;top:19px;height:6px;border-radius:6px;background:var(--line)}
@@ -178,7 +183,7 @@ const LEVELS = { facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "13 (mise en page)";
+const APP_VERSION = "16 (fenêtre résultat)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -437,7 +442,7 @@ function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moye
 function drawCard() {
   if (!G.deck.length) { G.deck = shuffle(songsIn(G.yMin || YEAR_MIN, G.yMax || YEAR_MAX, G.level || "moyen").map(s => s.id).filter(id => !G.players.some(p => p.cards.includes(id)))); }
   // phase : "ready" (pas encore écouté) → "listen" (musique lancée, choix de la case) → "revealed"
-  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chal = null; G.picking = false;
+  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.picking = null; G.bonus = false;
 }
 const sortedCards = p => p.cards.map(id => SONG[id]).sort((a, b) => a.year - b.year);
 
@@ -639,6 +644,8 @@ function viewSetup() {
       • <b>Vote</b> : avant de valider, une équipe adverse peut miser 1 🪙 sur une autre case.<br>
       &nbsp;&nbsp;– Si elle se trompe, son jeton passe à l'équipe qui joue.<br>
       &nbsp;&nbsp;– Si elle a raison et l'équipe qui joue a tort, elle gagne la carte (et dépense son jeton).<br>
+      &nbsp;&nbsp;– Plusieurs équipes peuvent voter, chacune sur une case différente.<br>
+      • <b>Bonus</b> : si l'équipe qui joue a trouvé le film <i>et</i> le compositeur, elle gagne 1 🪙.<br>
       • On passe à l'équipe suivante. La première à atteindre l'objectif gagne.
     </div>
     </div>
@@ -674,6 +681,8 @@ function gapLabel(cards, i) {
 }
 
 function viewGame() {
+  if (!Array.isArray(G.chals)) G.chals = [];
+  if (G.picking === false || G.picking === undefined) G.picking = null;
   const p = cur(), s = SONG[G.card], ph = G.phase, rev = ph === "revealed";
   const cards = sortedCards(p);
   let mystery;
@@ -686,21 +695,19 @@ function viewGame() {
       <div class="ctrl"><button id="replay">↺ Réécouter</button><button id="pause">⏸ Pause</button>${playMode() === "embed" ? "" : `<button id="devbtn">🔊 Appareil</button>`}</div></div>`;
   } else {
     const ok = G.result.ok;
-    const lines = (G.result.lines || [ok ? "✓ Bonne période ! Carte gagnée" : "✗ Raté — " + G.result.hint])
-      .map(l => `<div class="verdict ${l.startsWith("✓") ? "ok" : l.startsWith("✗") ? "ko" : ""}">${esc(l)}</div>`).join("");
-    mystery = `<div class="mystery reveal ${ok ? "ok" : "ko"}">
+    mystery = `<div class="mystery reveal ${ok ? "ok" : "ko"}" id="revcard" role="button" title="Revoir les résultats">
       <div class="year">${s.year}</div>
       <div class="film">${esc(s.film)}</div>
       <div class="track">« ${esc(s.track)} »</div>
       <div class="comp">${esc(s.composer)}</div>
-      ${lines}</div>`;
+      </div>`;
   }
   let tl = "";
   for (let i = 0; i <= cards.length; i++) {
     if (!rev) {
-      const isChal = G.chal && G.chal.gap === i;
-      tl += `<button class="gap ${G.gap === i ? "sel" : ""} ${isChal ? "chal" : ""}" data-g="${i}" ${ph === "ready" ? "disabled" : ""}>${
-        G.gap === i ? "🎧 " : isChal ? "⚔️ " + esc(G.players[G.chal.team].name) + " · " : ""}${gapLabel(cards, i)}</button>`;
+      const ch = (G.chals || []).find(c => c.gap === i);
+      tl += `<button class="gap ${G.gap === i ? "sel" : ""} ${ch ? "chal" : ""}" data-g="${i}" ${ph === "ready" ? "disabled" : ""}>${
+        G.gap === i ? "🎧 " : ch ? "⚔️ " + esc(G.players[ch.team].name) + " · " : ""}${gapLabel(cards, i)}</button>`;
     }
     if (i < cards.length) {
       const c = cards[i];
@@ -708,24 +715,26 @@ function viewGame() {
         <div class="t"><b>${esc(c.film)}</b><span>${esc(c.composer)}</span></div></div>`;
     }
   }
-  const canChal = ph === "listen" && G.gap != null && !G.chal && G.players.some((pl, i) => i !== G.turn && (pl.tokens || 0) > 0);
+  const chals = G.chals || [];
+  const canChal = ph === "listen" && G.gap != null && G.picking == null && votersLeft().length > 0 && chals.length < cards.length;
   let actions;
-  if (rev) actions = `<button class="btn" id="next">Passer à ${esc(G.players[(G.turn + 1) % G.players.length].name)} →</button>`;
-  else if (G.picking) actions = `<button class="btn sec" id="chalcancel">Annuler le vote</button>`;
+  if (rev) actions = `<button class="btn ${G.bonus ? "" : "sec"}" id="bonus" style="font-size:15px;padding:12px">${G.bonus
+      ? `✓ +1 🪙 pour ${esc(p.name)} (toucher pour annuler)` : "🪙 Film et compositeur trouvés : +1 jeton"}</button>
+    <button class="btn" id="next">Passer à ${esc(G.players[(G.turn + 1) % G.players.length].name)} →</button>`;
+  else if (G.picking != null) actions = `<button class="btn sec" id="chalcancel">Annuler le vote de ${esc(G.players[G.picking].name)}</button>`;
   else actions = `<div class="row">
       ${canChal ? `<button class="btn sec" id="chal" style="flex:0 0 38%">⚔️ Voter</button>` : ""}
-      ${G.chal ? `<button class="btn sec" id="chalcancel" style="flex:0 0 38%">✕ Annuler le vote</button>` : ""}
+      ${chals.length && !canChal ? `<button class="btn sec" id="chalclear" style="flex:0 0 38%">✕ Annuler les votes</button>` : ""}
       <button class="btn" id="validate" ${G.gap == null || ph === "ready" ? "disabled" : ""}>Valider</button></div>`;
   let hint = "";
-  if (G.picking) hint = `<b>${esc(G.players[G.chal.team].name)}</b> : touche la case où tu crois que va le film`;
+  if (G.picking != null) hint = `<b>${esc(G.players[G.picking].name)}</b> : touche une case libre où tu crois que va le film`;
+  else if (chals.length && ph === "listen") hint = `⚔️ ${chals.length} vote${chals.length > 1 ? "s" : ""} · <a href="#" id="chalclear2" style="color:var(--muted)">annuler les votes</a>`;
 
   return `<div class="screen">
     <div class="top"><div><div class="row" style="gap:10px"><span class="teambadge">${esc(p.name)}</span>
         <span class="mytok">${p.tokens || 0} 🪙</span></div>
       <div class="stats" style="margin-top:6px">${p.cards.length}/${G.target} cartes</div></div>
-      <div class="row" style="gap:10px;align-items:flex-start"><div class="tokens">${G.players.map((pl, i) => i === G.turn ? "" :
-        `<span>${esc(pl.name)} · ${pl.tokens || 0} 🪙</span>`).join("")}</div>
-      <button class="iconbtn" id="menu" aria-label="Menu">☰</button></div></div>
+      <button class="iconbtn" id="menu" aria-label="Menu">☰</button></div>
     ${mystery}
     <div class="status" id="status">${esc(statusMsg)}</div>
     ${hint ? `<div class="hint">${hint}</div>` : ""}
@@ -737,6 +746,8 @@ function viewGame() {
 let tlScroll = 0;
 function bindGame() {
   const tl = $("#tl"), ph = G.phase;
+  if (!Array.isArray(G.chals)) G.chals = [];
+  if (G.picking === false || G.picking === undefined) G.picking = null;
   // garder la position de défilement de la frise entre deux rendus
   if (ph === "revealed") {
     const nc = tl.querySelector(".tcard.new");
@@ -753,20 +764,32 @@ function bindGame() {
     $("#devbtn") && ($("#devbtn").onclick = chooseDevice);
     tl.querySelectorAll(".gap").forEach(g => g.onclick = () => {
       const i = +g.dataset.g;
-      if (G.picking) {
-        if (i === G.gap) { toast("Choisis une case différente de celle de " + cur().name + "."); return; }
-        G.chal.gap = i; G.picking = false;
+      if (G.picking != null) {
+        if (i === G.gap) { toast("Case déjà choisie par " + cur().name + "."); return; }
+        const taken = G.chals.find(c => c.gap === i);
+        if (taken) { toast("Case déjà votée par " + G.players[taken.team].name + "."); return; }
+        G.chals.push({ team: G.picking, gap: i }); G.picking = null;
       } else {
+        if (G.chals.some(c => c.gap === i)) { toast("Cette case a déjà un vote."); return; }
         G.gap = i;
-        if (G.chal && G.chal.gap === i) { G.chal.gap = null; G.picking = true; }
       }
       save(); render();
     });
     $("#validate") && ($("#validate").onclick = validate);
     $("#chal") && ($("#chal").onclick = startChallenge);
-    $("#chalcancel") && ($("#chalcancel").onclick = () => { G.chal = null; G.picking = false; save(); render(); });
+    $("#chalcancel") && ($("#chalcancel").onclick = () => { G.picking = null; save(); render(); });
+    const clear = e => { if (e) e.preventDefault(); G.chals = []; G.picking = null; save(); render(); };
+    $("#chalclear") && ($("#chalclear").onclick = () => clear());
+    $("#chalclear2") && ($("#chalclear2").onclick = clear);
   } else {
     $("#next").onclick = nextTurn;
+    $("#revcard") && ($("#revcard").onclick = showResult);
+    $("#bonus").onclick = () => {
+      const pl = cur();
+      if (G.bonus) { pl.tokens = Math.max(0, (pl.tokens || 0) - 1); G.bonus = false; }
+      else { pl.tokens = (pl.tokens || 0) + 1; G.bonus = true; if (navigator.vibrate) navigator.vibrate(40); }
+      save(); render();
+    };
   }
 }
 async function playCurrent() {
@@ -855,19 +878,25 @@ async function openFallback() {
   location.href = "https://open.spotify.com/track/" + uri.split(":").pop();
 }
 
+const votersLeft = () => G.players.map((pl, i) => ({ pl, i }))
+  .filter(x => x.i !== G.turn && (x.pl.tokens || 0) > 0 && !(G.chals || []).some(c => c.team === x.i));
 function startChallenge() {
-  const others = G.players.map((pl, i) => ({ pl, i })).filter(x => x.i !== G.turn && (x.pl.tokens || 0) > 0);
-  if (!others.length) return;
-  const go2 = i => { closeSheet(); G.chal = { team: i, gap: null }; G.picking = true; save(); render(); };
-  if (others.length === 1) return go2(others[0].i);
-  sheet(`<h2>Quelle équipe vote ?</h2>${others.map(x => `<button class="btn sec" data-t="${x.i}">⚔️ ${esc(x.pl.name)} · ${x.pl.tokens} 🪙</button>`).join("")}
+  const all = G.players.map((pl, i) => ({ pl, i })).filter(x => x.i !== G.turn);
+  const voted = i => (G.chals || []).some(c => c.team === i);
+  sheet(`<h2>Quelle équipe vote ?</h2><p class="muted">Chaque équipe mise 1 🪙 et vote sur une case libre (une seule fois par tour).</p>
+    ${all.map(x => {
+      const n = x.pl.tokens || 0, dis = n === 0 || voted(x.i);
+      return `<button class="btn sec" data-t="${x.i}" ${dis ? "disabled" : ""}>⚔️ ${esc(x.pl.name)} · ${n} 🪙${voted(x.i) ? " · a déjà voté" : n === 0 ? " · plus de jeton" : ""}</button>`;
+    }).join("")}
     <button class="btn ghost" id="t_close">Annuler</button>`, { t_close: closeSheet });
-  document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => go2(+b.dataset.t));
+  document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => {
+    closeSheet(); G.picking = +b.dataset.t; save(); render();
+  });
 }
 const gapOk = (cards, i, y) => (!cards[i - 1] || cards[i - 1].year <= y) && (!cards[i] || y <= cards[i].year);
 function validate() {
   const p = cur(), cards = sortedCards(p), s = SONG[G.card], i = G.gap;
-  if (G.picking || (G.chal && G.chal.gap == null)) { toast("Termine le vote ou annule-le."); return; }
+  if (G.picking != null) { toast("Termine le vote en cours ou annule-le."); return; }
   const ok = gapOk(cards, i, s.year);
   let hint = "";
   if (!ok) {
@@ -877,19 +906,31 @@ function validate() {
   }
   const lines = [ok ? `✓ ${p.name} a raison : carte gagnée !` : `✗ ${p.name} s'est trompée — ${hint}`];
   if (ok) p.cards.push(s.id);
-  if (G.chal) {
-    const c = G.players[G.chal.team], cOk = gapOk(cards, G.chal.gap, s.year);
-    if (!ok && cOk) {
-      c.cards.push(s.id); c.tokens = Math.max(0, (c.tokens || 0) - 1);
+  let won = ok;
+  for (const ch of (G.chals || [])) {
+    const c = G.players[ch.team], cOk = gapOk(cards, ch.gap, s.year);
+    if (cOk && !won) {
+      won = true; c.cards.push(s.id); c.tokens = Math.max(0, (c.tokens || 0) - 1);
       lines.push(`✓ ${c.name} avait raison : elle remporte la carte (et utilise son jeton).`);
+    } else if (cOk) {
+      lines.push(`= ${c.name} avait aussi une bonne case : elle garde son jeton.`);
     } else {
       c.tokens = Math.max(0, (c.tokens || 0) - 1); p.tokens = (p.tokens || 0) + 1;
       lines.push(`✗ Le vote de ${c.name} était faux : son jeton passe à ${p.name} 🪙`);
     }
   }
   G.phase = "revealed"; G.result = { ok, hint, lines };
-  save(); render();
+  save(); render(); showResult();
   if (navigator.vibrate) navigator.vibrate(ok ? 60 : [40, 60, 40]);
+}
+function showResult() {
+  const s = SONG[G.card], r = G.result; if (!r) return;
+  const lines = (r.lines || []).map(l => `<div class="rline ${l.startsWith("✓") ? "ok" : l.startsWith("✗") ? "ko" : ""}">${esc(l)}</div>`).join("");
+  sheet(`<div class="mystery reveal ${r.ok ? "ok" : "ko"}" style="margin-top:0">
+      <div class="year">${s.year}</div><div class="film">${esc(s.film)}</div>
+      <div class="track">« ${esc(s.track)} »</div><div class="comp">${esc(s.composer)}</div></div>
+    <div class="rlines">${lines}</div>
+    <button class="btn" id="r_close">Fermer</button>`, { r_close: closeSheet });
 }
 function nextTurn() {
   const order = [G.turn, ...G.players.map((_, i) => i).filter(i => i !== G.turn)];
