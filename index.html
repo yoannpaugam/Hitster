@@ -44,7 +44,7 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 .code{font-family:ui-monospace,Menlo,monospace;font-size:13px;word-break:break-all;background:#0a0810;padding:10px;border-radius:8px}
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:6px 10px;border-radius:99px;background:var(--card);border:1px solid var(--line)}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--ko)} .dot.on{background:var(--ok)}
-.hero{flex:1;display:flex;flex-direction:column;justify-content:center}
+.hero{flex:1 0 auto;display:flex;flex-direction:column;justify-content:center}
 .reel{font-size:64px}
 
 /* Jeu */
@@ -94,6 +94,8 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 .hint{font-size:13px;color:var(--muted);text-align:center;margin:8px 0 2px;min-height:18px}
 .hint b{color:var(--gold)}
 
+.ico{width:20px;height:20px;vertical-align:-4px;margin-right:4px}
+.ico.big{width:24px;height:24px;color:var(--gold)}
 /* Curseur de période */
 .range{position:relative;height:44px;margin:4px 6px 0}
 .range .track{position:absolute;left:0;right:0;top:19px;height:6px;border-radius:6px;background:var(--line)}
@@ -137,7 +139,7 @@ body.withbar .screen{padding-bottom:100px}
   <div id="embed"></div>
   <div class="mask"><b>🎵 Musique mystère</b><span>Si rien ne joue, touche ▶ juste ici →</span></div>
 </div>
-<script src="songs.js"></script>
+<script src="songs.js?v=9"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -159,6 +161,7 @@ const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
 const EASY_SET = new Set(typeof FACILE !== "undefined" ? FACILE : []);
+if (!EASY_SET.size) setTimeout(() => toast("Liste des musiques pas à jour (songs.js) : le niveau Facile est vide."), 800);
 const SONG = SONGS.map((s, i) => ({ id: i, film: s[0], year: s[1], composer: s[2], track: s[3], orig: s[4] || s[0], sid: s[5] || "",
   easy: EASY_SET.has(s[4] || s[0]) }));
 const LEVELS = { facile: "Facile", moyen: "Moyen" };
@@ -166,7 +169,7 @@ const LEVELS = { facile: "Facile", moyen: "Moyen" };
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state";
-const APP_VERSION = "8 (niveaux)";
+const APP_VERSION = "9 (niveaux)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -442,16 +445,17 @@ function render() {
 
 /* ---------- Accueil ---------- */
 function viewHome() {
-  return `<div class="screen">
+  return `<div class="screen scroll">
     <div class="hero">
       <div class="reel">🎬</div>
       <h1>Ciné<span>Hits</span></h1>
+      <div class="muted" style="font-size:12px">Version ${APP_VERSION}</div>
       <p class="muted">Écoute la musique, place le film au bon endroit sur ta frise. ${SONG.length} compositions de films.</p>
       <div style="margin:10px 0 18px"><span class="pill"><span class="dot ${isLogged() ? "on" : ""}"></span>${isLogged() ? "Spotify connecté" : "Spotify non connecté"}</span></div>
       ${isLogged() ? "" : `<button class="btn" id="login">Se connecter à Spotify</button>`}
       ${G && G.winner == null ? `<button class="btn ${isLogged() ? "" : "sec"}" id="resume">Reprendre la partie</button>` : ""}
       <button class="btn ${isLogged() && !(G && G.winner == null) ? "" : "sec"}" id="new">Nouvelle partie</button>
-      <button class="btn sec" id="options">🎚️ Options de partie<br><span style="font-weight:500;font-size:13px" class="muted">Niveau ${LEVELS[opt().level]} · ${opt().yMin}–${opt().yMax}</span></button>
+      <button class="btn sec" id="options"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></g><g fill="currentColor" stroke="var(--card)" stroke-width="1.5"><circle cx="9" cy="6" r="2.6"/><circle cx="15" cy="12" r="2.6"/><circle cx="7" cy="18" r="2.6"/></g></svg> Options de partie<br><span style="font-weight:500;font-size:13px" class="muted">Niveau ${LEVELS[opt().level]} · ${opt().yMin}–${opt().yMax}</span></button>
       <button class="btn ghost" id="settings">⚙️ Réglages</button>
     </div></div>`;
 }
@@ -545,7 +549,7 @@ function viewOptions() {
   const lvl = opt().level;
   const cnt = l => songsIn(YEAR_MIN, YEAR_MAX, l).length;
   return `<div class="screen scroll">
-    <div class="top"><h2>Options de partie</h2><button class="iconbtn" id="back">✕</button></div>
+    <div class="top"><h2><svg class="ico big" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></g><g fill="currentColor" stroke="var(--card)" stroke-width="1.5"><circle cx="9" cy="6" r="2.6"/><circle cx="15" cy="12" r="2.6"/><circle cx="7" cy="18" r="2.6"/></g></svg> Options de partie</h2><button class="iconbtn" id="back">✕</button></div>
     <label>Niveau</label>
     <div class="row">
       <button class="btn ${lvl === "facile" ? "" : "sec"}" data-lvl="facile">😀 Facile<br><span style="font-weight:500;font-size:13px">${cnt("facile")} musiques</span></button>
