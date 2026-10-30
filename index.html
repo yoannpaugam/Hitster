@@ -311,7 +311,7 @@ const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Dif
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state playlist-modify-private playlist-modify-public";
-const APP_VERSION = "30 (mélange)";
+const APP_VERSION = "31 (réglages verrouillés)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -711,6 +711,8 @@ function viewSettings() {
     <label>Thème de couleurs</label>
     <div class="themes">${THEMES.map(t => `<button data-theme-id="${t.id}" class="${LS.get("theme", "cine") === t.id ? "on" : ""}">
       <span class="sw">${t.sw.map(c => `<i style="background:${c}"></i>`).join("")}</span>${t.name}</button>`).join("")}</div>
+    ${isAdmin() ? `<div class="row" style="justify-content:space-between;margin-top:18px"><b>🔓 Réglages avancés</b>
+      <button class="btn sec small" id="relock">🔒 Verrouiller</button></div>
     <label>Client ID de ton app Spotify</label>
     <input id="cid" value="${esc(clientId())}" placeholder="ex. 3f2a…" autocomplete="off" autocapitalize="off" spellcheck="false">
     <label>Redirect URI à déclarer dans ton app Spotify (copie exacte)</label>
@@ -760,11 +762,39 @@ function viewSettings() {
       <div class="muted" id="plout"></div>
       <button class="btn" id="mkpl" ${isLogged() ? "" : "disabled"}>🎶 Créer les playlists</button>
     </div>
-    <button class="btn ghost" id="clearcache">Vider la mémoire des morceaux trouvés</button>
+    <button class="btn ghost" id="clearcache">Vider la mémoire des morceaux trouvés</button>`
+    : `<div class="box" style="margin-top:18px"><b>🔒 Réglages avancés</b>
+      <p class="muted">Réservés à l'organisateur du jeu.</p>
+      <input id="pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••"
+        style="font-size:24px;letter-spacing:8px;text-align:center">
+      <button class="btn" id="unlock" style="margin-top:10px">Déverrouiller</button></div>
+      <p class="muted">Version du jeu : ${APP_VERSION}</p>`}
   </div>`;
 }
+// Code organisateur : seule son empreinte SHA-256 figure ici, pas le code lui-même
+const ADMIN_HASH = "6cd721cd8bed1dc8757d34d913a40504385cc5dbeb267267f891d79db96cd9ff";
+const isAdmin = () => LS.get("admin", false) === true;
+async function checkPin(pin) {
+  try {
+    const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pin));
+    return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, "0")).join("") === ADMIN_HASH;
+  } catch { return false; }
+}
 function bindSettings() {
-  $("#back").onclick = () => { LS.set("clientId", $("#cid").value.trim()); go("home"); };
+  $("#back").onclick = () => { if ($("#cid")) LS.set("clientId", $("#cid").value.trim()); go("home"); };
+  document.querySelectorAll("[data-theme-id]").forEach(b => b.onclick = () => { LS.set("theme", b.dataset.themeId); applyTheme(b.dataset.themeId); render(); });
+  if (!isAdmin()) {
+    const pin = $("#pin");
+    pin.oninput = () => { pin.value = pin.value.replace(/\D/g, "").slice(0, 4); };
+    const tryIt = async () => {
+      if (await checkPin(pin.value)) { LS.set("admin", true); toast("Réglages avancés déverrouillés sur cet appareil."); render(); }
+      else { pin.value = ""; toast("Code incorrect."); }
+    };
+    $("#unlock").onclick = tryIt;
+    pin.onkeydown = e => { if (e.key === "Enter") tryIt(); };
+    return;
+  }
+  $("#relock").onclick = () => { LS.del("admin"); render(); };
   $("#cid").onchange = e => { LS.set("clientId", e.target.value.trim()); };
   $("#copy").onclick = async () => { try { await navigator.clipboard.writeText(REDIRECT_URI); toast("Copié !"); } catch { toast("Sélectionne et copie le texte."); } };
   $("#login") && ($("#login").onclick = () => { LS.set("clientId", $("#cid").value.trim()); login(); });
