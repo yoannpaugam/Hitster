@@ -245,8 +245,8 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
   <div class="mask"><b>🎵 Musique mystère</b><span>Touche ▶ pour lancer la musique →</span></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=28"></script>
-<script src="levels.js?v=28"></script>
+<script src="songs.js?v=33"></script>
+<script src="levels.js?v=33"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -292,7 +292,7 @@ const SERIES_ROWS = (typeof SERIES !== "undefined" ? SERIES : []).concat(typeof 
 // « extra » = séries, chansons et morceaux Kids qui ne sont pas des musiques de films de la liste (exclus du niveau Difficile)
 const SC_KEYS = new Set((typeof SERIES !== "undefined" ? SERIES : []).concat(typeof CHANSONS !== "undefined" ? CHANSONS : []).map(rowKey));
 const isExtra = key => SC_KEYS.has(key) || (KIDS_KEYS.has(key) && !(HAS_LEVELS && NIVEAUX[key]));
-const ALL = SONGS.slice();
+const ALL = SONGS.filter(r => !HAS_LEVELS || NIVEAUX[rowKey(r)] || SERIES_ROWS.some(x => rowKey(x) === rowKey(r)));
 { const seen = new Set(ALL.map(rowKey)); SERIES_ROWS.forEach(r => { const k = rowKey(r); if (!seen.has(k)) { seen.add(k); ALL.push(r); } }); }
 const LVL = { F: "facile", M: "moyen", D: "difficile", K: "kids" };
 const SONG = ALL.map((r, i) => {
@@ -311,7 +311,7 @@ const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Dif
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state playlist-modify-private playlist-modify-public";
-const APP_VERSION = "31 (réglages verrouillés)";
+const APP_VERSION = "33 (Disney et sagas)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -824,15 +824,20 @@ function bindSettings() {
   $("#mkpl").onclick = makePlaylists;
   $("#test").onclick = async () => {
     const out = $("#testout"), btn = $("#test"); btn.disabled = true; out.innerHTML = "";
-    let ko = 0;
-    for (const s of SONG) {
-      btn.textContent = `Vérification… ${s.id + 1}/${SONG.length}`;
-      try {
-        const uri = await resolveSong(s);
-        if (!uri) { ko++; out.insertAdjacentHTML("beforeend", `<div>❌ <b>${esc(s.film)}</b> — ${esc(s.track)} (${esc(s.composer)}) · ligne ${s.id + 1}</div>`); }
-      } catch (e) { if (e instanceof AuthError) { toast("Session Spotify expirée."); break; } }
-      await sleep(120);
-    }
+    let ko = 0, n = 0, next = 0, stop = false;
+    const list = SONG.filter(x => !knownUri(x)); // les morceaux déjà trouvés ne sont pas recherchés à nouveau
+    btn.textContent = `Vérification… 0/${list.length}`;
+    const worker = async () => {
+      while (next < list.length && !stop) {
+        const s = list[next++];
+        try {
+          const uri = await resolveSong(s);
+          if (!uri) { ko++; out.insertAdjacentHTML("beforeend", `<div>❌ <b>${esc(s.film)}</b> — ${esc(s.track)} (${esc(s.composer)})</div>`); }
+        } catch (e) { if (e instanceof AuthError) { stop = true; toast("Session Spotify expirée."); } }
+        btn.textContent = `Vérification… ${++n}/${list.length}`;
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
     btn.disabled = false; btn.textContent = "Relancer la vérification";
     out.insertAdjacentHTML("afterbegin", `<div><b>${ko ? ko + " morceau(x) introuvable(s)" : "Tous les morceaux ont été trouvés ✓"}</b></div>`);
   };
@@ -1709,16 +1714,25 @@ async function makePlaylists() {
   const levels = ["kids", "facile", "moyen", "difficile"];
   const done = [];
   try {
+    // 1) On cherche chaque morceau une seule fois (beaucoup sont communs à plusieurs niveaux), 4 recherches en parallèle
+    const all = [...new Set(levels.flatMap(l => songsIn(YEAR_MIN, YEAR_MAX, l).map(x => x.id)))].map(id => SONG[id]);
+    const todo = all.filter(x => !knownUri(x));
+    const found = {}; let n = 0, next = 0;
+    all.forEach(x => { const u = knownUri(x); if (u) found[x.id] = u; });
+    say(`Recherche des morceaux sur Spotify… 0/${todo.length}`);
+    const worker = async () => {
+      while (next < todo.length) {
+        const x = todo[next++];
+        try { const u = await resolveSong(x); if (u) found[x.id] = u; } catch (e) { if (e instanceof AuthError) throw e; }
+        n++; if (n % 3 === 0 || n === todo.length) say(`Recherche des morceaux sur Spotify… ${n}/${todo.length}`);
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    // 2) Création / mise à jour des 4 playlists
     for (const lvl of levels) {
       const songs = songsIn(YEAR_MIN, YEAR_MAX, lvl).slice().sort((a, b) => a.year - b.year);
       const uris = []; let miss = 0;
-      for (let i = 0; i < songs.length; i++) {
-        say(`${LEVELS[lvl]} : recherche des morceaux ${i + 1}/${songs.length}…`);
-        const had = !!knownUri(songs[i]);
-        let u = null; try { u = await resolveSong(songs[i]); } catch (e) { if (e instanceof AuthError) throw e; }
-        if (u && !uris.includes(u)) uris.push(u); else if (!u) miss++;
-        if (!had) await sleep(80);
-      }
+      songs.forEach(x => { const u = found[x.id]; if (u && !uris.includes(u)) uris.push(u); else if (!u) miss++; });
       say(`${LEVELS[lvl]} : création de la playlist…`);
       const name = "CinéHits · " + LEVELS[lvl];
       let id = saved[lvl], first = uris.slice(0, 100);
@@ -1753,7 +1767,7 @@ function exportSongs() {
   const rows = SONG.map(s => {
     const raw = ALL[s.id].slice(0, 5);
     while (raw.length < 5) raw.push(s.orig);
-    raw.push(s.level === "facile" ? "F" : s.level === "moyen" ? "M" : "D");
+    raw.push(s.level === "facile" ? "F" : s.level === "moyen" ? "M" : s.level === "kids" ? "K" : "D");
     const id = s.sid || (c[songKey(s)] || "").split(":").pop();
     if (id) { found++; raw.push(id); }
     return "  " + JSON.stringify(raw).replace(/","/g, '", "').replace(/",(\d)/g, '", $1').replace(/(\d),"/g, '$1, "') + ",";
