@@ -173,6 +173,8 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
 .kfound{margin:8px 14px;padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid var(--line);font-weight:700}
 .kempty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px;color:var(--muted);padding:20px;min-height:200px}
 .kidchip{font-family:inherit;font-size:13px;color:var(--text)}
+.row.eq{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.row.eq .btn{min-width:0;width:100%;padding-left:6px;padding-right:6px}
 /* Curseur de période */
 .range{position:relative;height:44px;margin:4px 6px 0}
 .range .track{position:absolute;left:0;right:0;top:19px;height:6px;border-radius:6px;background:var(--line)}
@@ -311,7 +313,7 @@ const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Dif
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state playlist-modify-private playlist-modify-public";
-const APP_VERSION = "33 (Disney et sagas)";
+const APP_VERSION = "34 (voter ou passer)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -638,7 +640,7 @@ function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moye
 function drawCard() {
   if (!G.deck.length) { G.deck = spreadDeck(deckFor(G.yMin || YEAR_MIN, G.yMax || YEAR_MAX, G.level || "moyen").filter(id => !G.players.some(p => p.cards.includes(id))), 10); }
   // phase : "ready" (pas encore écouté) → "listen" (musique lancée, choix de la case) → "revealed"
-  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.bonus = false; G.answer = null; G.curUri = null;
+  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.passes = []; G.bonus = false; G.answer = null; G.curUri = null;
 }
 const cleanName = n => String(n || "").replace(/\s+/g, " ").trim().slice(0, 18);
 // Mélange vraiment aléatoire, en espaçant les morceaux d'un même film (au moins 10 chansons d'écart)
@@ -1202,6 +1204,10 @@ function postState(prev) {
   }
   if (G.phase !== "vote") pickTeam = null;
   if (newCard) needTap(false);
+  if (G.multi && G.phase === "vote" && activeHere() && prev && prev.phase === "vote" && allDecided() &&
+      !G.players.every((pl, i) => i === prev.turn || (prev.chals || []).some(c => c.team === i) || (prev.passes || []).includes(i))) {
+    toast("Toutes les équipes ont décidé : tu peux voir la réponse"); if (navigator.vibrate) navigator.vibrate(60);
+  }
   if (G.multi && !G.curUri && G.card != null && G.phase !== "revealed") shareUri();
   ensureEmbedTrack();
   if (["home", "lobby", "join", "setup"].includes(screen)) screen = "game";
@@ -1231,7 +1237,7 @@ function applyAction(a) {
     case "answer": {
       if (!active || G.phase !== "listen" || G.gap == null) return false;
       G.answer = { film: String(a.film || "").slice(0, 80), composer: String(a.composer || "").slice(0, 80) };
-      G.phase = "vote"; G.chals = [];
+      G.phase = "vote"; G.chals = []; G.passes = [];
       return true;
     }
     case "vote": {
@@ -1241,7 +1247,13 @@ function applyAction(a) {
       if (!pl || (pl.tokens || 0) <= 0 || G.chals.some(c => c.team === team)) return false;
       const used = [G.gap, ...G.chals.map(c => c.gap)];
       if (a.gap == null || used.includes(a.gap) || a.gap < 0 || a.gap > cur().cards.length) return false;
-      G.chals.push({ team, gap: a.gap }); return true;
+      G.chals.push({ team, gap: a.gap }); G.passes = (G.passes || []).filter(t => t !== team); return true;
+    }
+    case "pass": {
+      if (!multi || G.phase !== "vote" || a.by == null || a.by === G.turn) return false;
+      G.passes = G.passes || [];
+      if (G.passes.includes(a.by)) return false;
+      G.passes.push(a.by); return true;
     }
     case "unvote": {
       const team = multi ? a.by : a.team, n = G.chals.length;
@@ -1275,6 +1287,7 @@ function applyAction(a) {
   }
   return false;
 }
+const allDecided = () => !!G && G.players.every((pl, i) => i === G.turn || (G.chals || []).some(c => c.team === i) || (G.passes || []).includes(i));
 const gapOk = (cards, i, y) => (!cards[i - 1] || cards[i - 1].year <= y) && (!cards[i] || y <= cards[i].year);
 
 /* ---------- Correction tolérante des propositions ---------- */
@@ -1438,6 +1451,8 @@ function viewGame() {
   } else if (ph === "vote") {
     const nv = chals.length;
     hint = `🔒 Réponse de ${esc(p.name)} verrouillée · ⚔️ ${nv ? nv + " vote" + (nv > 1 ? "s" : "") : "aucun vote pour l'instant"}`;
+    if (multi) hint = allDecided() ? `✓ Toutes les équipes ont décidé${active ? " : tu peux voir la réponse" : ""}`
+      : `🔒 ${G.players.map((pl, i) => i === G.turn ? "" : `${esc(pl.name)} : ${chals.some(c => c.team === i) ? "⚔️ vote" : (G.passes || []).includes(i) ? "passe" : "…"}`).filter(Boolean).join(" · ")}`;
     if (pickTeam != null) {
       actions = `<button class="btn sec" id="votecancel">Annuler</button>`;
       hint = `⚔️ <b>${esc(G.players[pickTeam].name)}</b> : touche une case libre (1 🪙)`;
@@ -1448,10 +1463,10 @@ function viewGame() {
     } else if (active) {
       actions = `<button class="btn" id="reveal">Voir la réponse</button>`;
     } else {
-      const myVote = chals.find(c => c.team === me);
+      const myVote = chals.find(c => c.team === me), passed = (G.passes || []).includes(me);
       if (myVote) actions = `<button class="btn sec" id="unvote">✕ Retirer mon vote (${esc(gapLabel(cards, myVote.gap))})</button>`;
-      else if (canVoteTeam(me)) actions = `<button class="btn" id="vote">⚔️ Voter (1 🪙 · il t'en reste ${mine.tokens})</button>`;
-      else actions = `<button class="btn sec" disabled>${(mine.tokens || 0) ? "Plus de case libre pour voter" : "Plus de jeton pour voter"}</button>`;
+      else actions = `<div class="row eq"><button class="btn" id="vote" ${canVoteTeam(me) ? "" : "disabled"}>⚔️ Voter (${mine.tokens || 0} 🪙)</button>
+        <button class="btn sec" id="pass" ${passed ? "disabled" : ""}>${passed ? "✓ Passé" : "Passer"}</button></div>`;
     }
   } else if (active) {
     actions = `<button class="btn" id="answer" ${G.gap == null || ph === "ready" ? "disabled" : ""}>${G.gap == null ? "Touche une période" : "Proposer film et compositeur"}</button>`;
@@ -1606,6 +1621,7 @@ function bindGame() {
     document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => { closeSheet(); pickTeam = +b.dataset.t; render(); });
   });
   $("#unvote") && ($("#unvote").onclick = () => dispatch({ t: "unvote" }));
+  $("#pass") && ($("#pass").onclick = () => dispatch({ t: "pass" }));
   $("#reveal") && ($("#reveal").onclick = () => {
     if (pickTeam != null) { toast("Termine le vote en cours ou annule-le."); return; }
     dispatch({ t: "reveal" });
