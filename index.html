@@ -6,9 +6,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="CinéHits">
+<meta name="apple-mobile-web-app-title" content="Hitster">
 <meta name="theme-color" content="#0e0b16">
-<title>CinéHits</title>
+<title>Hitster films & séries</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#0e0b16; --bg2:#17121f; --card:#211a2c; --line:#3a3047;
@@ -70,6 +73,9 @@ p{line-height:1.45}
 .row>.btn{flex:1}
 input,select{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--bg2);
   color:var(--text);font-size:16px}
+select{-webkit-appearance:none;appearance:none;padding-right:46px;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1l6 6 6-6' fill='none' stroke='%23a9a6c9' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 18px center;background-size:14px 9px}
 label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 .box{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin:10px 0}
 .code{font-family:ui-monospace,Menlo,monospace;font-size:13px;word-break:break-all;background:var(--bg);padding:10px;border-radius:8px}
@@ -175,6 +181,15 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
 .kidchip{font-family:inherit;font-size:13px;color:var(--text)}
 .row.eq{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .row.eq .btn{min-width:0;width:100%;padding-left:6px;padding-right:6px}
+.home .hero{justify-content:center}
+.home .btn{font-family:"Fredoka",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-weight:600;font-size:19px;border-radius:20px}
+.logo{display:flex;flex-direction:column;align-items:flex-start;margin:0 0 10px;font-family:"Fredoka",-apple-system,BlinkMacSystemFont,sans-serif;line-height:.95}
+.logo .l1{font-size:68px;font-weight:700;letter-spacing:-1px;background:linear-gradient(120deg,var(--gold),var(--gold2));
+  -webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:4px}
+.logo .l2{font-size:28px;font-weight:600;color:var(--text);margin-top:6px;padding:4px 14px;border-radius:99px;background:rgba(var(--acc-rgb),.14);border:1px solid rgba(var(--acc-rgb),.35)}
+.tag{font-family:"Fredoka",-apple-system,sans-serif;font-weight:500;font-size:18px;color:var(--muted);line-height:1.35;margin:14px 0 22px}
+.yrange{font-size:13px;color:var(--muted);margin:2px 0 8px}
+.yrange b{color:var(--text)}
 /* Curseur de période */
 .range{position:relative;height:44px;margin:4px 6px 0}
 .range .track{position:absolute;left:0;right:0;top:19px;height:6px;border-radius:6px;background:var(--line)}
@@ -247,8 +262,8 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
   <div class="mask"><b>🎵 Musique mystère</b><span>Touche ▶ pour lancer la musique →</span></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=35"></script>
-<script src="levels.js?v=35"></script>
+<script src="songs.js?v=37"></script>
+<script src="levels.js?v=37"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -291,16 +306,19 @@ const rowKey = r => (r[4] || r[0]) + "|" + r[3];
 const HAS_LEVELS = typeof NIVEAUX !== "undefined";
 const KIDS_ROWS = typeof KIDS !== "undefined" ? KIDS : [];
 const KIDS_KEYS = new Set(KIDS_ROWS.map(r => (r[4] || r[0]) + "|" + r[3]));
-const SERIES_ROWS = (typeof SERIES !== "undefined" ? SERIES : []).concat(typeof CHANSONS !== "undefined" ? CHANSONS : [], KIDS_ROWS);
+const FP_ROWS = typeof FILMS_PLUS !== "undefined" ? FILMS_PLUS : [];
+const FP_KEYS = new Set(FP_ROWS.map(r => (r[4] || r[0]) + "|" + r[3]));
+const SERIES_ROWS = (typeof SERIES !== "undefined" ? SERIES : []).concat(typeof CHANSONS !== "undefined" ? CHANSONS : [], FP_ROWS, KIDS_ROWS);
+const ROW_BY_KEY = new Map(); SERIES_ROWS.forEach(r => { const k = (r[4] || r[0]) + "|" + r[3]; if (!ROW_BY_KEY.has(k)) ROW_BY_KEY.set(k, r); });
 // « extra » = séries, chansons et morceaux Kids qui ne sont pas des musiques de films de la liste (exclus du niveau Difficile)
 const SC_KEYS = new Set((typeof SERIES !== "undefined" ? SERIES : []).concat(typeof CHANSONS !== "undefined" ? CHANSONS : []).map(rowKey));
-const isExtra = key => SC_KEYS.has(key) || (KIDS_KEYS.has(key) && !(HAS_LEVELS && NIVEAUX[key]));
-const ALL = SONGS.filter(r => !HAS_LEVELS || NIVEAUX[rowKey(r)] || SERIES_ROWS.some(x => rowKey(x) === rowKey(r)));
+const isExtra = key => !FP_KEYS.has(key) && (SC_KEYS.has(key) || (KIDS_KEYS.has(key) && !(HAS_LEVELS && NIVEAUX[key])));
+const ALL = SONGS.filter(r => !HAS_LEVELS || NIVEAUX[rowKey(r)] || ROW_BY_KEY.has(rowKey(r)));
 { const seen = new Set(ALL.map(rowKey)); SERIES_ROWS.forEach(r => { const k = rowKey(r); if (!seen.has(k)) { seen.add(k); ALL.push(r); } }); }
 const LVL = { F: "facile", M: "moyen", D: "difficile", K: "kids" };
 const SONG = ALL.map((r, i) => {
   const key = rowKey(r), series = isExtra(key);
-  const sr = series ? SERIES_ROWS.find(x => rowKey(x) === key) : null;
+  const sr = ROW_BY_KEY.get(key) || null;
   const code = (HAS_LEVELS && NIVEAUX[key]) || (sr && sr[5]) || (HAS_LEVELS ? "D" : r[5] === "F" ? "F" : "M");
   return { id: i, film: r[0], year: r[1], composer: r[2], track: r[3], orig: r[4] || r[0], level: LVL[code] || "moyen", series, kids: KIDS_KEYS.has(key), sid: r[6] || "" };
 });
@@ -314,7 +332,7 @@ const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Dif
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state playlist-modify-private playlist-modify-public";
-const APP_VERSION = "35 (Kids Disney + mélange)";
+const APP_VERSION = "37 (Hitster films & séries)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -630,6 +648,7 @@ function deckFor(a, b, lvl, need = 0) {
   const all = songsIn(a, b, lvl), ok = all.filter(playable);
   return (ok.length >= need ? ok : all).map(s => s.id);
 }
+const lvlRange = lvl => { const ys = songsIn(-9999, 9999, lvl).map(s => s.year); return ys.length ? [Math.min(...ys), Math.max(...ys)] : [YEAR_MIN, YEAR_MAX]; };
 const opt = () => ({ level: LS.get("level", "facile"), yMin: LS.get("yMin", YEAR_MIN), yMax: LS.get("yMax", YEAR_MAX) });
 function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moyen", tokens = 3, names = []) {
   const deck = freshDeck(deckFor(yMin, yMax, level, nTeams + 5), level);
@@ -694,19 +713,14 @@ function render() {
 
 /* ---------- Accueil ---------- */
 function viewHome() {
-  return `<div class="screen scroll">
+  return `<div class="screen scroll home">
     <div class="hero">
-      <div class="reel">🎬</div>
-      <h1>Ciné<span>Hits</span></h1>
-      <p class="muted">Écoute la musique, place le film au bon endroit sur ta frise. ${SONG.length} compositions de films.</p>
-      <div style="margin:10px 0 18px"><span class="pill"><span class="dot ${isLogged() || allReady() ? "on" : ""}"></span>${
-        allReady() ? "Prêt à jouer · aucune connexion nécessaire" : isLogged() ? "Spotify connecté" : "Spotify non connecté"}</span></div>
-      ${isLogged() || allReady() ? "" : `<button class="btn" id="login">Se connecter à Spotify</button>`}
+      <div class="logo"><span class="l1">Hitster</span><span class="l2">films &amp; séries</span></div>
+      <p class="tag">Écoute la musique, devine le film ou la série et place-le au bon endroit sur ta frise.</p>
       ${NET ? `<button class="btn" id="backmulti">Revenir à la partie à plusieurs (${esc(NET.code)})</button>` : ""}
-      ${!NET && G && G.winner == null ? `<button class="btn ${isLogged() || allReady() ? "" : "sec"}" id="resume">Reprendre la partie</button>` : ""}
-      <button class="btn ${(isLogged() || allReady()) && !(G && G.winner == null) && !NET ? "" : "sec"}" id="new">Nouvelle partie</button>
-      <button class="btn sec" id="joinbtn">📲 Rejoindre une partie</button>
-      <button class="btn sec" id="options"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></g><g fill="currentColor" stroke="var(--card)" stroke-width="1.5"><circle cx="9" cy="6" r="2.6"/><circle cx="15" cy="12" r="2.6"/><circle cx="7" cy="18" r="2.6"/></g></svg> Options de partie<br><span style="font-weight:500;font-size:13px" class="muted">Niveau ${LEVELS[opt().level]} · ${opt().yMin}–${opt().yMax}</span></button>
+      ${!NET && G && G.winner == null ? `<button class="btn" id="resume">Reprendre la partie</button>` : ""}
+      <button class="btn ${!(G && G.winner == null) && !NET ? "" : "sec"}" id="new">Nouvelle partie</button>
+      <button class="btn sec" id="joinbtn">Rejoindre une partie</button>
       <button class="btn ghost" id="settings">⚙️ Réglages</button>
     </div></div>`;
 }
@@ -717,7 +731,6 @@ function bindHome() {
   $("#joinbtn").onclick = () => { if (NET && !confirm("Quitter la partie à plusieurs en cours ?")) return; if (NET) leaveMulti(); go("join"); };
   $("#backmulti") && ($("#backmulti").onclick = () => go(G ? "game" : "lobby"));
   $("#settings").onclick = () => go("settings");
-  $("#options").onclick = () => { optBack = "home"; go("options"); };
 }
 
 /* ---------- Réglages ---------- */
@@ -885,13 +898,13 @@ function viewOptions() {
     <div class="box" style="margin-top:0">
       <div class="yearsel"><span class="yy" id="yminv"></span><span class="muted" id="ycount"></span><span class="yy" id="ymaxv"></span></div>
       <div class="range"><div class="track"></div><div class="fill" id="yfill"></div>
-        <input type="range" id="ymin" min="${YEAR_MIN}" max="${YEAR_MAX}" step="1" value="${opt().yMin}" aria-label="Année de début">
-        <input type="range" id="ymax" min="${YEAR_MIN}" max="${YEAR_MAX}" step="1" value="${opt().yMax}" aria-label="Année de fin"></div>
+        <input type="range" id="ymin" min="${lvlRange(lvl)[0]}" max="${lvlRange(lvl)[1]}" step="1" value="${Math.max(lvlRange(lvl)[0], opt().yMin)}" aria-label="Année de début">
+        <input type="range" id="ymax" min="${lvlRange(lvl)[0]}" max="${lvlRange(lvl)[1]}" step="1" value="${Math.min(lvlRange(lvl)[1], opt().yMax)}" aria-label="Année de fin"></div>
       <div class="presets">
-        <button data-p="${YEAR_MIN}-${YEAR_MAX}">Tout</button>
-        <button data-p="${YEAR_MIN}-1979">Classiques (avant 1980)</button>
+        <button data-p="${lvlRange(lvl)[0]}-${lvlRange(lvl)[1]}">Tout</button>
+        <button data-p="${lvlRange(lvl)[0]}-1979">Classiques (avant 1980)</button>
         <button data-p="1980-1999">80-90</button>
-        <button data-p="2000-${YEAR_MAX}">Depuis 2000</button>
+        <button data-p="2000-${lvlRange(lvl)[1]}">Depuis 2000</button>
       </div>
     </div>`}
     </div>
@@ -905,19 +918,21 @@ function bindOptions() {
   document.querySelectorAll("[data-lvl]").forEach(btn => btn.onclick = () => { LS.set("level", btn.dataset.lvl); render(); });
   const a = $("#ymin"), b = $("#ymax");
   if (!a) return;
+  const [RMIN, RMAX] = lvlRange(lvl);
   const upd = moved => {
     let lo = +a.value, hi = +b.value;
     if (lo > hi) { if (moved === a) { b.value = lo; hi = lo; } else { a.value = hi; lo = hi; } }
-    const span = YEAR_MAX - YEAR_MIN;
-    $("#yfill").style.left = ((lo - YEAR_MIN) / span * 100) + "%";
-    $("#yfill").style.right = ((YEAR_MAX - hi) / span * 100) + "%";
+    const span = Math.max(1, RMAX - RMIN);
+    $("#yfill").style.left = ((lo - RMIN) / span * 100) + "%";
+    $("#yfill").style.right = ((RMAX - hi) / span * 100) + "%";
     $("#yminv").textContent = lo; $("#ymaxv").textContent = hi;
     const n = songsIn(lo, hi, lvl).length, need = LS.get("teams", 2) + 5;
     $("#ycount").textContent = n + " musique" + (n > 1 ? "s" : "");
     $("#ycount").style.color = n < need ? "var(--ko)" : "";
-    LS.set("yMin", lo); LS.set("yMax", hi);
+    // poignées en butée = pas de limite (les autres niveaux peuvent aller plus loin)
+    LS.set("yMin", lo <= RMIN ? YEAR_MIN : lo); LS.set("yMax", hi >= RMAX ? YEAR_MAX : hi);
     // la poignée de gauche passe au-dessus quand elles se touchent à droite
-    a.style.zIndex = lo > YEAR_MAX - 5 ? 3 : 1;
+    a.style.zIndex = lo > RMAX - 5 ? 3 : 1;
   };
   a.oninput = () => upd(a); b.oninput = () => upd(b);
   document.querySelectorAll("[data-p]").forEach(btn => btn.onclick = () => {
@@ -975,7 +990,8 @@ function bindSetup() {
   $("#back").onclick = () => go("home");
   document.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { setupMulti = b.dataset.m === "1"; LS.set("multi", setupMulti); render(); });
   const o = opt(), n = songsIn(o.yMin, o.yMax, o.level).length, need = (setupMulti ? 8 : +$("#teams").value) + 5;
-  $("#optsumtxt").innerHTML = `Niveau <b>${LEVELS[o.level]}</b> · ${o.yMin}–${o.yMax} · <b>${n}</b> musiques`;
+  { const [r0, r1] = lvlRange(o.level);
+    $("#optsumtxt").innerHTML = `Niveau <b>${LEVELS[o.level]}</b>${o.level === "kids" ? "" : ` · ${Math.max(r0, o.yMin)}–${Math.min(r1, o.yMax)}`} · <b>${n}</b> musiques`; }
   $("#optsum").onclick = () => { optBack = "setup"; go("options"); };
   if (n < need) { $("#start").disabled = true; $("#optsumtxt").innerHTML += `<br><span style="color:var(--ko)">Pas assez de musiques : élargis les options.</span>`; }
   $("#teams") && ($("#teams").onchange = () => { LS.set("teams", +$("#teams").value); render(); });
@@ -1764,7 +1780,7 @@ async function makePlaylists() {
       const uris = []; let miss = 0;
       songs.forEach(x => { const u = found[x.id]; if (u && !uris.includes(u)) uris.push(u); else if (!u) miss++; });
       say(`${LEVELS[lvl]} : création de la playlist…`);
-      const name = "CinéHits · " + LEVELS[lvl];
+      const name = "Hitster films & séries · " + LEVELS[lvl];
       let id = saved[lvl], first = uris.slice(0, 100);
       if (id) {
         const r = await api(`/playlists/${id}/items`, { method: "PUT", body: JSON.stringify({ uris: first }) });
@@ -1772,7 +1788,7 @@ async function makePlaylists() {
       }
       if (!id) {
         const r = await api("/me/playlists", { method: "POST", body: JSON.stringify({ name, public: false,
-          description: `Toutes les musiques du niveau ${LEVELS[lvl]} du jeu CinéHits.` }) });
+          description: `Toutes les musiques du niveau ${LEVELS[lvl]} du jeu Hitster films & séries.` }) });
         if (!r.ok) throw new Error("Création refusée par Spotify (" + r.status + ")");
         id = (await r.json()).id; saved[lvl] = id; LS.set("playlists", saved);
         const r2 = await api(`/playlists/${id}/items`, { method: "POST", body: JSON.stringify({ uris: first }) });
