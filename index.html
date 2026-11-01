@@ -247,8 +247,8 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
   <div class="mask"><b>🎵 Musique mystère</b><span>Touche ▶ pour lancer la musique →</span></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=33"></script>
-<script src="levels.js?v=33"></script>
+<script src="songs.js?v=35"></script>
+<script src="levels.js?v=35"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -281,7 +281,8 @@ function toast(msg, ms = 2800) {
 }
 const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
   .replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
-function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function rnd() { try { const u = new Uint32Array(1); crypto.getRandomValues(u); return u[0] / 4294967296; } catch { return Math.random(); } }
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
 // [film, année, compositeur, morceau, titre original, niveau "F"/"M", id Spotify optionnel]
 // songs.js donne les morceaux (et leurs identifiants Spotify) ; levels.js donne les niveaux et ajoute les séries
@@ -313,7 +314,7 @@ const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Dif
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state playlist-modify-private playlist-modify-public";
-const APP_VERSION = "34 (voter ou passer)";
+const APP_VERSION = "35 (Kids Disney + mélange)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -631,14 +632,14 @@ function deckFor(a, b, lvl, need = 0) {
 }
 const opt = () => ({ level: LS.get("level", "facile"), yMin: LS.get("yMin", YEAR_MIN), yMax: LS.get("yMax", YEAR_MAX) });
 function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moyen", tokens = 3, names = []) {
-  const deck = spreadDeck(deckFor(yMin, yMax, level, nTeams + 5), 10);
+  const deck = freshDeck(deckFor(yMin, yMax, level, nTeams + 5), level);
   const kids = level === "kids";
   const players = Array.from({ length: nTeams }, (_, i) => ({ name: cleanName(names[i]) || "Équipe " + (i + 1), cards: kids ? [] : [deck.pop()], tokens: kids ? 0 : tokens }));
   G = { players, target, deck, yMin, yMax, level, kids, turn: 0, card: null, phase: "ready", gap: null, result: null, winner: null };
   drawCard(); save();
 }
 function drawCard() {
-  if (!G.deck.length) { G.deck = spreadDeck(deckFor(G.yMin || YEAR_MIN, G.yMax || YEAR_MAX, G.level || "moyen").filter(id => !G.players.some(p => p.cards.includes(id))), 10); }
+  if (!G.deck.length) { G.deck = freshDeck(deckFor(G.yMin || YEAR_MIN, G.yMax || YEAR_MAX, G.level || "moyen").filter(id => !G.players.some(p => p.cards.includes(id))), G.level || "moyen"); }
   // phase : "ready" (pas encore écouté) → "listen" (musique lancée, choix de la case) → "revealed"
   G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.passes = []; G.bonus = false; G.answer = null; G.curUri = null;
 }
@@ -656,11 +657,24 @@ function spreadDeck(ids, gap = 10) {
       // un film avec plusieurs chansons restantes n'est prioritaire que s'il risque de ne plus pouvoir être espacé
       const urgent = ok.filter(i => (left[SONG[pool[i]].film] - 1) * (gap + 1) >= pool.length - 2 * gap);
       const cand = urgent.length ? urgent : ok;
-      pick = cand[Math.floor(Math.random() * cand.length)];
+      pick = cand[Math.floor(rnd() * cand.length)];
     }
     const id = pool.splice(pick, 1)[0]; left[SONG[id].film]--; out.push(id);
   }
   return out.reverse(); // la pioche se tire par la fin
+}
+// Les morceaux entendus lors des dernières parties sont placés en fin de pioche
+function freshDeck(ids, level) {
+  const recent = new Set((LS.get("recent", {}) || {})[level] || []);
+  const fresh = ids.filter(id => !recent.has(songKey(SONG[id]))), old = ids.filter(id => recent.has(songKey(SONG[id])));
+  return spreadDeck(old, 10).concat(spreadDeck(fresh, 10)); // la pioche se tire par la fin : les nouveaux d'abord
+}
+function rememberPlayed(id, level) {
+  if (id == null || !level) return;
+  const all = LS.get("recent", {}) || {}, list = (all[level] || []).filter(k => k !== songKey(SONG[id]));
+  list.push(songKey(SONG[id]));
+  const max = Math.max(10, Math.floor(songsIn(YEAR_MIN, YEAR_MAX, level).length * 0.6));
+  all[level] = list.slice(-max); LS.set("recent", all);
 }
 const sortedCards = p => p.cards.map(id => SONG[id]).sort((a, b) => a.year - b.year);
 
@@ -1230,7 +1244,7 @@ function applyAction(a) {
   ensureG();
   const multi = !!G.multi, active = !multi || a.by === G.turn;
   switch (a.t) {
-    case "play": if (!active || G.phase !== "ready") return false; G.phase = "listen"; G.playSeq = (G.playSeq || 0) + 1; return true;
+    case "play": if (!active || G.phase !== "ready") return false; rememberPlayed(G.card, G.level); G.phase = "listen"; G.playSeq = (G.playSeq || 0) + 1; return true;
     case "replay": if (!active || !["listen", "vote"].includes(G.phase)) return false; G.playSeq = (G.playSeq || 0) + 1; return true;
     case "redraw": if (!active) return false; drawCard(); G.phase = "listen"; G.playSeq = (G.playSeq || 0) + 1; return true;
     case "gap": if (!active || G.phase !== "listen") return false; G.gap = a.i; return true;
