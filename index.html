@@ -262,8 +262,8 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
   <div class="mask"><b>🎵 Musique mystère</b><span>Touche ▶ pour lancer la musique →</span></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=37"></script>
-<script src="levels.js?v=37"></script>
+<script src="songs.js?v=38"></script>
+<script src="levels.js?v=38"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -332,7 +332,7 @@ const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Dif
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state playlist-modify-private playlist-modify-public";
-const APP_VERSION = "37 (Hitster films & séries)";
+const APP_VERSION = "38 (Hitster films & séries)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -1011,10 +1011,13 @@ function bindSetup() {
 
 /* ================= Multi-appareils (relais MQTT public) ================= */
 // L'appareil qui crée la partie est l'arbitre : il applique les actions et diffuse l'état à tous.
-const BROKER = () => LS.get("broker", "wss://broker.hivemq.com:8884/mqtt");
+const BROKERS = ["wss://broker.hivemq.com:8884/mqtt", "wss://broker.emqx.io:8084/mqtt"];
+const BROKER = () => LS.get("broker", BROKERS[0]);
 let NET = LS.get("net", null);          // { code, role: "host" | "guest" }
 let LOBBY = NET && NET.role === "host" ? LS.get("lobby", null) : null; // { devices: { cid: équipe }, opts }
-let mq = null, netOnline = false;
+// On se connecte aux DEUX relais en même temps : si l'un est bloqué ou en panne, l'autre prend le relais.
+let mqs = [], netOnline = false, joinTimer = null, lastStateTs = 0;
+const seenActs = new Map();
 const myCid = (() => { let c = LS.get("cid", ""); if (!c) { c = randStr(12); LS.set("cid", c); } return c; })();
 const topicOf = t => `cinehits/v1/${NET.code}/${t}`;
 const isGuest = () => !!NET && NET.role === "guest";
@@ -1029,60 +1032,90 @@ const lobbyTeams = () => Object.entries((LOBBY || {}).devices || {})
   .map(([cid, team]) => ({ team, me: cid === myCid, name: lobbyName(cid, team) })).sort((a, b) => a.team - b.team);
 const lobbyName = (cid, team) => cleanName(((LOBBY || {}).names || {})[cid]) || "Équipe " + (team + 1);
 
+function netStop() {
+  clearInterval(joinTimer); joinTimer = null;
+  mqs.forEach(c => { try { c.end(true); } catch {} }); mqs = [];
+}
 function netStart() {
-  if (mq) { try { mq.end(true); } catch {} mq = null; }
+  netStop(); lastStateTs = 0;
   if (typeof mqtt === "undefined") { toast("Module réseau indisponible : vérifie ta connexion internet puis recharge.", 4500); return; }
-  mq = mqtt.connect(BROKER(), {
-    clientId: "cinehits_" + myCid + "_" + Math.random().toString(16).slice(2, 6),
-    reconnectPeriod: 2000, connectTimeout: 8000, keepalive: 30, clean: true
-  });
-  mq.on("connect", () => {
-    netOnline = true;
-    mq.subscribe(topicOf(NET.role === "host" ? "act" : "state"), { qos: 1 });
-    if (NET.role === "host") publishState(); else sendAct({ t: "join" });
-    refreshNet();
-  });
-  const off = () => { if (netOnline) { netOnline = false; refreshNet(); } };
-  mq.on("close", off); mq.on("offline", off);
-  mq.on("message", (t, buf) => {
-    const txt = buf.toString(); if (!txt) { if (isGuest()) onState(null); return; }
-    let m; try { m = JSON.parse(txt); } catch { return; }
-    if (NET.role === "host") onAct(m); else onState(m);
-  });
+  const urls = [BROKER(), ...BROKERS.filter(u => u !== BROKER())];
+  for (const url of urls) {
+    let c;
+    try {
+      c = mqtt.connect(url, {
+        clientId: "cinehits_" + myCid + "_" + Math.random().toString(16).slice(2, 6),
+        reconnectPeriod: 2000, connectTimeout: 8000, keepalive: 30, clean: true
+      });
+    } catch { continue; }
+    c.on("connect", () => {
+      c.subscribe(topicOf(NET.role === "host" ? "act" : "state"), { qos: 1 });
+      if (NET.role === "host") publishState(); else sendAct({ t: "join" });
+      updateOnline();
+    });
+    c.on("close", updateOnline); c.on("offline", updateOnline); c.on("error", () => {});
+    c.on("message", (t, buf) => {
+      if (!NET) return;
+      const txt = buf.toString(); if (!txt) { if (isGuest()) onState(null); return; }
+      let m; try { m = JSON.parse(txt); } catch { return; }
+      if (NET.role === "host") onAct(m);
+      else { if (m.ts && m.ts <= lastStateTs) return; if (m.ts) lastStateTs = m.ts; onState(m); }
+    });
+    mqs.push(c);
+  }
+  // L'invité redemande à entrer tant que l'hôte ne l'a pas ajouté (si l'hôte était hors ligne au moment du premier essai)
+  if (isGuest()) joinTimer = setInterval(() => {
+    if (!NET || !isGuest()) return netStop();
+    if (myTeam() == null && !G) sendAct({ t: "join" });
+  }, 3000);
+}
+function updateOnline() {
+  const on = mqs.some(c => c.connected);
+  if (on !== netOnline) { netOnline = on; refreshNet(); }
 }
 function refreshNet() {
   if (screen === "lobby") return render();
   const d = $("#netdot"); if (d) d.className = "netdot " + (netOnline ? "on" : "");
 }
 function publishState() {
-  if (!mq || !isHost()) return;
-  mq.publish(topicOf("state"), JSON.stringify({ lobby: LOBBY, G, ts: Date.now() }), { qos: 1, retain: true });
+  if (!isHost()) return;
+  const msg = JSON.stringify({ lobby: LOBBY, G, ts: Date.now() });
+  mqs.forEach(c => { if (c.connected) c.publish(topicOf("state"), msg, { qos: 1, retain: true }); });
 }
 function sendAct(a) {
-  if (!mq) return;
-  a.cid = myCid;
-  mq.publish(topicOf("act"), JSON.stringify(a), { qos: 1 });
+  a.cid = myCid; a.id = a.id || randStr(10);
+  const msg = JSON.stringify(a);
+  mqs.forEach(c => { if (c.connected) c.publish(topicOf("act"), msg, { qos: 1 }); });
 }
+// Quand le téléphone se rallume ou revient sur l'onglet, on se reconnecte tout de suite
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && NET && !mqs.some(c => c.connected)) netStart();
+});
 function createMulti(opts) {
-  if (mq) { try { mq.end(true); } catch {} mq = null; }
+  netStop();
   NET = { code: String(Math.floor(10000 + Math.random() * 90000)), role: "host" };
   LOBBY = { devices: { [myCid]: 0 }, opts };
   G = null; LS.del("game"); LS.set("net", NET); LS.set("lobby", LOBBY);
   go("lobby"); netStart();
 }
 function joinMulti(code) {
-  if (mq) { try { mq.end(true); } catch {} mq = null; }
+  netStop();
   NET = { code, role: "guest" }; LOBBY = null; G = null; LS.set("net", NET);
   go("lobby"); netStart();
-  setTimeout(() => { if (NET && NET.code === code && !LOBBY) toast("Aucune partie trouvée avec ce code pour l'instant… Vérifie le code.", 4500); }, 7000);
+  setTimeout(() => {
+    if (!NET || NET.code !== code || LOBBY) return;
+    toast(netOnline ? "Aucune partie trouvée avec ce code : vérifie le code et que l'hôte a bien l'écran de la partie ouvert."
+      : "Impossible de joindre le relais : essaie en 4G ou sur un autre Wi-Fi.", 6000);
+  }, 9000);
 }
 function leaveMulti(msg) {
-  if (mq) {
+  if (mqs.length) {
     try {
-      if (isHost()) mq.publish(topicOf("state"), "", { qos: 1, retain: true });
+      if (isHost()) mqs.forEach(c => { if (c.connected) c.publish(topicOf("state"), "", { qos: 1, retain: true }); });
       else sendAct({ t: "leave" });
     } catch {}
-    const c = mq; mq = null; setTimeout(() => { try { c.end(true); } catch {} }, 600);
+    const old = mqs; mqs = []; clearInterval(joinTimer); joinTimer = null;
+    setTimeout(() => old.forEach(c => { try { c.end(true); } catch {} }), 600);
   }
   pause(); showBar(false); closeSheet();
   NET = null; LOBBY = null; netOnline = false; LS.del("net"); LS.del("lobby");
@@ -1096,6 +1129,11 @@ function renumberLobby() {
 }
 function onAct(a) {
   if (!a || !a.cid) return;
+  if (a.id) {
+    if (seenActs.has(a.id)) return;
+    seenActs.set(a.id, Date.now());
+    if (seenActs.size > 300) for (const [k] of seenActs) { seenActs.delete(k); if (seenActs.size <= 200) break; }
+  }
   if (a.t === "join") {
     if (LOBBY.devices[a.cid] == null && !G) {
       const n = Object.keys(LOBBY.devices).length;
