@@ -336,6 +336,41 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
 .win .trophy{font-size:80px}
 .test-list{font-size:13px;max-height:40dvh;overflow:auto}
 .test-list div{padding:6px 0;border-bottom:1px solid var(--line)}
+/* Messagerie (parties à plusieurs) : feuille qui monte depuis le bas */
+body.haschat #app{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+#chatscrim{position:fixed;inset:0;z-index:11;background:rgba(0,0,0,.5);opacity:0;transition:opacity .25s}
+#chatscrim.on{opacity:1}
+#chatscrim[hidden],#chat[hidden]{display:none}
+#chat{position:fixed;left:0;right:0;bottom:0;z-index:12;background:var(--bg2);border-radius:26px 26px 0 0;
+  padding:0 16px env(safe-area-inset-bottom);box-shadow:0 -8px 30px rgba(0,0,0,.35)}
+:root[data-theme="pop"] #chat{border:2.5px solid #1b1b1b;border-bottom:0;box-shadow:0 -4px 0 rgba(27,27,27,.08)}
+.chbar{display:block;width:100%;border:0;background:none;color:var(--text);padding:8px 0 0;cursor:pointer;text-align:left;font:inherit}
+.grab{display:block;width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto}
+:root:not([data-theme="pop"]) .grab{background:rgba(255,255,255,.22)}
+.chrow{display:flex;align-items:center;gap:12px;height:44px;padding:0 4px}
+.chic{flex:none;width:22px;height:22px;color:var(--muted)}
+#chlast{flex:1;min-width:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#chlast b{font-weight:700}
+#chlast.idle{color:var(--muted)}
+.chdot{display:none;flex:none;width:8px;height:8px;border-radius:50%;background:var(--gold)}
+#chat.unread .chdot{display:block}
+#chat.open .chrow{display:none}
+#chat.open .chbar{padding:8px 0 10px}
+.chpanel{max-height:0;overflow:hidden;transition:max-height .3s ease;display:flex;flex-direction:column}
+#chat.open .chpanel{max-height:60dvh}
+#chlist{flex:1;min-height:140px;max-height:calc(60dvh - 90px);overflow-y:auto;padding:4px 2px 10px;display:flex;flex-direction:column;gap:8px}
+.chm{max-width:80%;padding:9px 13px;border-radius:18px;background:var(--card);font-size:15px;line-height:1.35;word-wrap:break-word;align-self:flex-start}
+.chm small{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:2px}
+.chm.me{align-self:flex-end;background:var(--btnbg);color:var(--onacc)}
+.chempty{color:var(--muted);font-size:14px;text-align:center;margin:auto}
+#chform{display:flex;gap:10px;padding:10px 0 14px;border-top:1px solid var(--line)}
+#chform input{flex:1;padding:13px 16px;border-radius:999px;font-size:16px;background:var(--bg)}
+#chform button{flex:none;width:48px;height:48px;border-radius:50%;border:0;background:var(--btnbg);color:var(--onacc);cursor:pointer;display:grid;place-items:center}
+#chform button svg{width:22px;height:22px}
+:root[data-theme="pop"] .chm{border:2px solid #1b1b1b}
+:root[data-theme="pop"] .chm.me{background:#7be0b5;color:#1b1b1b}
+:root[data-theme="pop"] #chform{border-top:2px solid #1b1b1b}
+:root[data-theme="pop"] #chform button{border:2px solid #1b1b1b}
 </style>
 </head>
 <body>
@@ -343,13 +378,22 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
 (function () { try { var t = JSON.parse(localStorage.getItem("ch_theme") || '"studio"'); if (["perf","catalogue","onde","pop"].indexOf(t) >= 0) document.documentElement.dataset.theme = t; } catch (e) {} })();
 </script>
 <div id="app"></div>
+<div id="chatscrim" hidden></div>
+<div id="chat" hidden>
+  <button class="chbar" id="chtog" aria-label="Ouvrir la messagerie">
+    <span class="grab"></span>
+    <span class="chrow"><svg class="chic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span id="chlast" class="idle">Messages</span><i class="chdot"></i></span>
+  </button>
+  <div class="chpanel"><div id="chlist"></div>
+    <form id="chform" autocomplete="off"><input id="chmsg" maxlength="200" placeholder="Écrire un message…" enterkeyhint="send"><button type="submit" aria-label="Envoyer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button></form></div>
+</div>
 <div id="playerbar">
   <div id="embed"></div>
   <div class="mask"><b>🎵 Musique mystère</b><span>Touche ▶ pour lancer la musique →</span></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=43"></script>
-<script src="levels.js?v=43"></script>
+<script src="songs.js?v=45"></script>
+<script src="levels.js?v=45"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -419,7 +463,7 @@ const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Dif
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state playlist-modify-private playlist-modify-public";
-const APP_VERSION = "43 (Hitster films & séries)";
+const APP_VERSION = "45 (Hitster films & séries)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -796,6 +840,7 @@ function render() {
   ({ home: bindHome, settings: bindSettings, options: bindOptions, setup: bindSetup, game: bindGame, win: bindWin, join: bindJoin, lobby: bindLobby })[screen]();
   if (keep) { const el = document.getElementById(keep.id); if (el) { el.value = keep.v; el.focus(); try { el.setSelectionRange(keep.s, keep.s); } catch {} } }
   showBar(playMode() === "embed" && screen === "game" && G && G.phase !== "ready" && (activeHere() || !!G.remote) && embedUsed);
+  updateChatUI();
 }
 
 /* ---------- Accueil ---------- */
@@ -1140,13 +1185,16 @@ function netStart() {
     } catch { continue; }
     c.on("connect", () => {
       c.subscribe(topicOf(NET.role === "host" ? "act" : "state"), { qos: 1 });
+      c.subscribe(topicOf("chat"), { qos: 1 });
       if (NET.role === "host") publishState(); else sendAct({ t: "join" });
       updateOnline();
     });
     c.on("close", updateOnline); c.on("offline", updateOnline); c.on("error", () => {});
     c.on("message", (t, buf) => {
       if (!NET) return;
-      const txt = buf.toString(); if (!txt) { if (isGuest()) onState(null); return; }
+      const txt = buf.toString();
+      if (t.endsWith("/chat")) { try { onChat(JSON.parse(txt)); } catch {} return; }
+      if (!txt) { if (isGuest()) onState(null); return; }
       let m; try { m = JSON.parse(txt); } catch { return; }
       if (NET.role === "host") onAct(m);
       else { if (m.ts && m.ts <= lastStateTs) return; if (m.ts) lastStateTs = m.ts; onState(m); }
@@ -1264,6 +1312,69 @@ function startMulti() {
   G.multi = true; G.remote = !!o.remote; G.playSeq = 0;
   const prev = null; afterChange(prev);
 }
+
+
+/* ---------- Messagerie discrète en bas de l'écran de jeu ---------- */
+let CHAT = [], chatOpen = false, chatTimer = null;
+const chatSeen = new Set();
+function chatVisible() { return !!NET && !!G && G.winner == null && screen === "game"; }
+function myChatName() {
+  const t = myTeam();
+  return (G && t != null && G.players[t] ? G.players[t].name : (LOBBY ? lobbyName(myCid, t ?? 0) : "Moi")) || "Moi";
+}
+function sendChat(text) {
+  text = String(text || "").trim().slice(0, 200);
+  if (!text || !NET) return;
+  const m = { id: randStr(10), cid: myCid, name: myChatName(), text, ts: Date.now() };
+  const msg = JSON.stringify(m);
+  mqs.forEach(c => { if (c.connected) c.publish(topicOf("chat"), msg, { qos: 1 }); });
+  onChat(m);
+}
+function onChat(m) {
+  if (!m || !m.id || !m.text || chatSeen.has(m.id)) return;
+  chatSeen.add(m.id);
+  CHAT.push({ id: m.id, me: m.cid === myCid, name: String(m.name || "?").slice(0, 30), text: String(m.text).slice(0, 200), ts: m.ts || Date.now() });
+  if (CHAT.length > 100) CHAT = CHAT.slice(-100);
+  drawChatList();
+  const box = $("#chat");
+  if (!chatOpen && box) {
+    const last = $("#chlast");
+    last.innerHTML = `<b>${esc(m.name)}</b> : ${esc(m.text)}`;
+    last.classList.remove("idle");
+    clearTimeout(chatTimer);
+    chatTimer = setTimeout(() => { last.textContent = "Messages"; last.classList.add("idle"); }, 10000);
+    if (m.cid !== myCid) box.classList.add("unread");
+  }
+}
+function drawChatList() {
+  const l = $("#chlist"); if (!l) return;
+  l.innerHTML = CHAT.length ? CHAT.map(c => `<div class="chm ${c.me ? "me" : ""}">${c.me ? "" : `<small>${esc(c.name)}</small>`}${esc(c.text)}</div>`).join("")
+    : `<div class="chempty">Aucun message pour l'instant.</div>`;
+  l.scrollTop = l.scrollHeight;
+}
+function setChatOpen(o) {
+  chatOpen = o;
+  const box = $("#chat"), sc = $("#chatscrim"); box.classList.toggle("open", o);
+  $("#chtog").setAttribute("aria-label", o ? "Fermer la messagerie" : "Ouvrir la messagerie");
+  if (o) { sc.hidden = false; requestAnimationFrame(() => sc.classList.add("on")); box.classList.remove("unread"); drawChatList(); }
+  else { sc.classList.remove("on"); setTimeout(() => { if (!chatOpen) sc.hidden = true; }, 250); $("#chmsg").blur(); }
+}
+function updateChatUI() {
+  const box = $("#chat"); if (!box) return;
+  const v = chatVisible();
+  box.hidden = !v; document.body.classList.toggle("haschat", v);
+  if (!v && chatOpen) setChatOpen(false);
+  if (!NET) { CHAT = []; chatSeen.clear(); }
+}
+$("#chtog").onclick = () => setChatOpen(!chatOpen);
+$("#chatscrim").onclick = () => setChatOpen(false);
+// Glisser la poignée vers le haut ou le bas
+(() => { let y0 = null;
+  $("#chtog").addEventListener("touchstart", e => { y0 = e.touches[0].clientY; }, { passive: true });
+  $("#chtog").addEventListener("touchend", e => { if (y0 == null) return; const d = e.changedTouches[0].clientY - y0; y0 = null;
+    if (d < -25 && !chatOpen) setChatOpen(true); else if (d > 25 && chatOpen) setChatOpen(false); }, { passive: true });
+})();
+$("#chform").onsubmit = e => { e.preventDefault(); const i = $("#chmsg"); sendChat(i.value); i.value = ""; i.focus(); };
 
 /* ---------- Écrans « Rejoindre » et salle d'attente ---------- */
 function viewJoin() {
