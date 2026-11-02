@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -73,7 +73,7 @@
 html,body{margin:0;height:100%;background:var(--bodybg);color:var(--text);
   font-family:var(--font)}
 button,input,select,textarea{font-family:inherit}
-body{overscroll-behavior:none}
+body{overscroll-behavior:none;overflow-x:hidden;touch-action:manipulation}
 #app{height:100dvh;display:flex;flex-direction:column;
   padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 .screen{flex:1;display:flex;flex-direction:column;min-height:0;padding:16px}
@@ -298,6 +298,8 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
 /* Le lecteur Spotify reste invisible ; il ne s'affiche (titre masqué) que si le téléphone exige un appui direct dessus */
 #playerbar{position:fixed;left:0;bottom:0;width:300px;height:80px;opacity:0;pointer-events:none;z-index:-1;overflow:hidden;border-radius:12px;background:#000}
 #playerbar iframe{display:block;border:0;width:100%;height:80px}
+#playerbar #embed{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%)}
+#playerbar.needtap.show{background:var(--card);border-radius:18px}
 #playerbar.needtap.show{opacity:1;pointer-events:auto;z-index:15;border:1px solid var(--gold)}
 #playerbar.needtap .mask{display:flex}
 #playerbar .mask{display:none;position:absolute;left:0;top:0;bottom:0;right:74px;background:var(--card);display:flex;flex-direction:column;
@@ -335,7 +337,9 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
 .win{text-align:center}
 .win .trophy{font-size:80px}
 .test-list{font-size:13px;max-height:40dvh;overflow:auto}
-.test-list div{padding:6px 0;border-bottom:1px solid var(--line)}
+.test-list>div{padding:6px 0;border-bottom:1px solid var(--line)}
+.fixrow{display:flex;gap:6px;margin-top:6px}.fixrow input{flex:1;min-width:0;padding:9px 10px;font-size:16px}.fixrow .btn{margin:0}
+.test-list{max-height:none}
 /* Messagerie (parties à plusieurs) : feuille qui monte depuis le bas */
 body.haschat #app{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
 #chatscrim{position:fixed;inset:0;z-index:11;background:rgba(0,0,0,.5);opacity:0;transition:opacity .25s}
@@ -392,8 +396,8 @@ body.haschat #app{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
   <div class="mask"><b>🎵 Musique mystère</b><span>Touche ▶ pour lancer la musique →</span></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=46"></script>
-<script src="levels.js?v=46"></script>
+<script src="songs.js?v=47"></script>
+<script src="levels.js?v=47"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -463,7 +467,7 @@ const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Dif
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state playlist-modify-private playlist-modify-public";
-const APP_VERSION = "46 (Hitster films & séries)";
+const APP_VERSION = "47 (Hitster films & séries)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -538,7 +542,9 @@ async function resolveSong(s) {
   const cache = LS.get("ids2", {}), key = songKey(s);
   if (cache[key]) return cache[key];
   const ln = norm(lastName(s.composer)), tn = norm(s.track), fn = norm(s.orig);
-  const queries = [`${s.track} ${s.orig}`, `${s.track} ${lastName(s.composer)}`, `${s.orig} ${lastName(s.composer)}`];
+  const film = String(s.orig).replace(/\(.*?\)/g, "").trim(), disp = String(s.film).replace(/\(.*?\)/g, "").trim(), dn = norm(disp);
+  const queries = [...new Set([`${s.track} ${film}`, `${s.track} ${lastName(s.composer)}`, `${s.track} ${disp}`, `${film} ${lastName(s.composer)}`, s.track])];
+  const tw = tn.split(" ").filter(w => w.length > 2);
   let best = null, bestScore = 0;
   for (const q of queries) {
     const r = await api("/search?type=track&limit=10&q=" + encodeURIComponent(q));
@@ -550,7 +556,8 @@ async function resolveSong(s) {
       let sc = 0;
       if (t.artists.some(a => norm(a.name).includes(ln))) sc += 2;
       if (name.includes(tn) || (name.length > 3 && tn.includes(name))) sc += 3;
-      if (fn && album.includes(fn)) sc += 1;
+      else if (tw.length && tw.filter(w => name.split(" ").includes(w)).length / tw.length >= .6) sc += 2;
+      if ((fn && album.includes(norm(film))) || (dn && album.includes(dn))) sc += 1;
       const bad = /karaok|instrumental|live|orchestr|cover|piano|lullab|berceuse|remix|acoustic|acoustique|tribute|8 bit|music box|reprise|version longue|extended/;
       if (bad.test(name + " " + album) && !bad.test(tn)) sc -= 3;
       if (/bande originale|soundtrack|original motion picture|b o |vf|version francaise/.test(album)) sc += 1;
@@ -631,19 +638,19 @@ function placeBar() {
   const zone = $("#playzone");
   if (bar.classList.contains("needtap") && zone && screen === "game") {
     const r = zone.getBoundingClientRect();
-    bar.style.top = Math.max(0, r.top + (r.height - 80) / 2) + "px"; bar.style.bottom = "auto";
-    bar.style.left = r.left + "px"; bar.style.width = r.width + "px";
+    const h = Math.max(80, r.height);
+    bar.style.top = Math.max(0, r.top + (r.height - h) / 2) + "px"; bar.style.bottom = "auto"; bar.style.height = h + "px";
+    bar.style.left = r.left + "px"; bar.style.width = Math.min(r.width, innerWidth - r.left) + "px";
     bar.classList.add("show");
   } else {
     bar.classList.remove("show");
-    bar.style.top = "auto"; bar.style.bottom = "0"; bar.style.left = "0"; bar.style.width = "300px";
+    bar.style.top = "auto"; bar.style.bottom = "0"; bar.style.left = "0"; bar.style.width = "300px"; bar.style.height = "80px";
   }
 }
 function needTap(on) {
   const bar = $("#playerbar"); if (!bar) return;
   bar.classList.toggle("needtap", !!on); placeBar();
-  if (on) setStatus("👉 Touche ▶ dans le lecteur pour lancer la musique");
-  else if (statusMsg.startsWith("👉")) setStatus("");
+
 }
 // Bouton rond lecture / pause, avec la progression du morceau en anneau
 const curUriOk = () => { if (!G || G.card == null) return null; const u = knownUri(SONG[G.card]); return EmbedCtl && u && embedState.playingURI === u ? u : null; };
@@ -986,6 +993,15 @@ function bindSettings() {
   $("#clearcache").onclick = () => { LS.del("ids2"); toast("Mémoire vidée."); };
   $("#export").onclick = exportSongs;
   $("#mkpl").onclick = makePlaylists;
+  $("#testout").onclick = e => {
+    const b = e.target.closest(".fixrow button"); if (!b) return;
+    const row = b.closest(".miss"), inp = row.querySelector("input"), m = String(inp.value).match(/track[/:]([A-Za-z0-9]{22})/) || String(inp.value).trim().match(/^([A-Za-z0-9]{22})$/);
+    if (!m) { toast("Lien non reconnu : il doit ressembler à open.spotify.com/track/…"); return; }
+    const sg = SONG[+row.dataset.id], c = LS.get("ids2", {}) || {};
+    c[songKey(sg)] = "spotify:track:" + m[1]; LS.set("ids2", c);
+    row.innerHTML = `✅ <b>${esc(sg.film)}</b> — ${esc(sg.track)} : lien enregistré`;
+    toast("Enregistré. Exporte songs.js pour l'ajouter pour tout le monde.");
+  };
   $("#test").onclick = async () => {
     const out = $("#testout"), btn = $("#test"); btn.disabled = true; out.innerHTML = "";
     let ko = 0, n = 0, next = 0, stop = false;
@@ -996,14 +1012,15 @@ function bindSettings() {
         const s = list[next++];
         try {
           const uri = await resolveSong(s);
-          if (!uri) { ko++; out.insertAdjacentHTML("beforeend", `<div>❌ <b>${esc(s.film)}</b> — ${esc(s.track)} (${esc(s.composer)})</div>`); }
+          if (!uri) { ko++; out.insertAdjacentHTML("beforeend", `<div class="miss" data-id="${s.id}">❌ <b>${esc(s.film)}</b> — ${esc(s.track)} (${esc(s.composer)})
+            <div class="fixrow"><input placeholder="Colle ici le lien Spotify du morceau" autocomplete="off"><button class="btn small">OK</button></div></div>`); }
         } catch (e) { if (e instanceof AuthError) { stop = true; toast("Session Spotify expirée."); } }
         btn.textContent = `Vérification… ${++n}/${list.length}`;
       }
     };
     await Promise.all([worker(), worker(), worker(), worker()]);
     btn.disabled = false; btn.textContent = "Relancer la vérification";
-    out.insertAdjacentHTML("afterbegin", `<div><b>${ko ? ko + " morceau(x) introuvable(s)" : "Tous les morceaux ont été trouvés ✓"}</b></div>`);
+    out.insertAdjacentHTML("afterbegin", `<div><b>${ko ? ko + " morceau(x) introuvable(s)" : "Tous les morceaux ont été trouvés ✓"}</b>${ko ? `<br><span class="muted">Dans Spotify : Partager → Copier le lien du titre, puis colle-le sous le morceau. Pense ensuite à exporter songs.js.</span>` : ""}</div>`);
   };
 }
 
@@ -1212,7 +1229,7 @@ function updateOnline() {
   if (on !== netOnline) { netOnline = on; refreshNet(); }
 }
 function refreshNet() {
-  if (screen === "lobby") return render();
+  if (screen === "lobby" || (screen === "game" && G)) return render();
   const d = $("#netdot"); if (d) d.className = "netdot " + (netOnline ? "on" : "");
 }
 function publishState() {
@@ -1651,7 +1668,7 @@ function shareUri() {
 }
 /* ---------- Jeu ---------- */
 let statusMsg = "";
-function setStatus(m) { statusMsg = m; const el = $("#status"); if (el) el.textContent = m; }
+function setStatus(m) { if (statusMsg === m) return; statusMsg = m; if (screen === "game" && G) render(); }
 
 function gapLabel(cards, i) {
   const prev = cards[i - 1], next = cards[i];
@@ -1661,6 +1678,11 @@ function gapLabel(cards, i) {
   return prev.year === next.year ? `En ${prev.year}` : `Entre ${prev.year} et ${next.year}`;
 }
 
+// Un seul espace d'information en haut : consigne en cours, sinon message d'erreur, sinon tour de jeu
+function ctxBar(instr, turn) {
+  const msg = instr || (statusMsg ? esc(statusMsg) : "") || turn;
+  return msg ? `<div class="turnbar">${msg}</div>` : "";
+}
 function viewGame() {
   if (G.kids) return viewKids();
   ensureG();
@@ -1745,11 +1767,9 @@ function viewGame() {
   return `<div class="screen game">
     <div class="top"><div><div class="row" style="gap:10px"><button class="teambadge" id="teams" title="Voir toutes les équipes">${esc(mine.name)} ▾</button>
         <span class="mytok">${mine.tokens || 0} 🪙</span></div>
-      <div class="stats" style="margin-top:6px">${mine.cards.length}/${G.target} cartes${multi ? ` · <span id="netdot" class="netdot ${netOnline ? "on" : ""}"></span>` : ""}</div></div>
+      <div class="stats" style="margin-top:6px">${mine.cards.length}/${G.target} cartes${multi && !netOnline ? ` · <span class="netdot"></span> reconnexion…` : ""}</div></div>
       <button class="iconbtn" id="menu" aria-label="Menu">☰</button></div>
-    ${multi && !active ? `<div class="turnbar">🎧 Au tour de <b>${esc(p.name)}</b> · ${p.tokens || 0} 🪙</div>` : ""}
-    <div class="status" id="status" style="margin-top:6px">${esc(statusMsg)}</div>
-    ${hint ? `<div class="hint" style="margin-top:6px">${hint}</div>` : ""}
+    ${ctxBar(pickTeam != null ? hint : "", multi && !active ? `🎧 Au tour de <b>${esc(p.name)}</b>` : "")}
     <div class="tlwrap" style="margin-top:8px"><div class="fade-top"></div><div class="timeline" id="tl">${tl}</div><div class="fade-bot"></div></div>
     ${mystery}
     ${actions}
@@ -1785,10 +1805,9 @@ function viewKids() {
   else actions = `<button class="btn" id="next">Passer à ${esc(G.players[(G.turn + 1) % G.players.length].name)} →</button>`;
   return `<div class="screen game">
     <div class="top"><div><button class="teambadge" id="teams" title="Voir toutes les équipes">${esc(mine.name)} ▾</button>
-      <div class="stats" style="margin-top:6px">⭐ ${mine.cards.length}/${G.target} bonnes réponses${multi ? ` · <span id="netdot" class="netdot ${netOnline ? "on" : ""}"></span>` : ""}</div></div>
+      <div class="stats" style="margin-top:6px">⭐ ${mine.cards.length}/${G.target} bonnes réponses${multi && !netOnline ? ` · <span class="netdot"></span> reconnexion…` : ""}</div></div>
       <button class="iconbtn" id="menu" aria-label="Menu">☰</button></div>
-    ${multi && !active ? `<div class="turnbar">🎧 Au tour de <b>${esc(p.name)}</b> · ⭐ ${p.cards.length}</div>` : ""}
-    <div class="status" id="status" style="margin-top:6px">${esc(statusMsg)}</div>
+    ${ctxBar("", multi && !active ? `🎧 Au tour de <b>${esc(p.name)}</b>` : "")}
     <div class="tlwrap" style="margin-top:8px"><div class="timeline" id="tl">${middle}</div></div>
     ${card}
     ${actions}
