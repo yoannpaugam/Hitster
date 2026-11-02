@@ -412,8 +412,8 @@ body.haschat #app{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
   <div class="mask"><b>🎵 Musique mystère</b><span>Touche ▶ pour lancer la musique →</span></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=52"></script>
-<script src="levels.js?v=52"></script>
+<script src="songs.js?v=53"></script>
+<script src="levels.js?v=53"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -483,7 +483,7 @@ const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Dif
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state playlist-modify-private playlist-modify-public";
-const APP_VERSION = "52 (Hitster films & séries)";
+const APP_VERSION = "53 (Hitster films & séries)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -814,7 +814,7 @@ function newGame(nTeams, target, yMin = YEAR_MIN, yMax = YEAR_MAX, level = "moye
 function drawCard() {
   if (!G.deck.length) { G.deck = freshDeck(deckFor(G.yMin || YEAR_MIN, G.yMax || YEAR_MAX, G.level || "moyen").filter(id => !G.players.some(p => p.cards.includes(id))), G.level || "moyen"); }
   // phase : "ready" (pas encore écouté) → "listen" (musique lancée, choix de la case) → "revealed"
-  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.passes = []; G.bonus = false; G.answer = null; G.curUri = null;
+  G.card = G.deck.pop(); G.phase = "ready"; G.gap = null; G.result = null; G.chals = []; G.passes = []; G.bonus = false; G.answer = null; G.curUri = null; G.voteCur = null; G.voteOrder = undefined; G.voteClosed = false; G.voteStart = null;
 }
 const cleanName = n => String(n || "").replace(/\s+/g, " ").trim().slice(0, 18);
 // Mélange vraiment aléatoire, en espaçant les morceaux d'un même film (au moins 10 chansons d'écart)
@@ -1474,33 +1474,56 @@ let pickTeam = null, pickGap = null;
 /* ---------- Minuteur de vote (parties à plusieurs téléphones) ---------- */
 const VOTE_MS = 10000;
 let clockOff = 0, voteTimerLocal = null, voteTimerHost = null;
-// Délai d'une équipe (horloge de l'arbitre) : 10 s, ou 20 s si elle a touché « Voter »
+// Les équipes adverses votent chacune à leur tour, dans l'ordre qui suit l'équipe du tour.
+// L'équipe qui a la main (G.voteCur) a 10 s, ou 20 s si elle a touché « Voter » ; son délai part de G.voteStart.
 const teamDeadline = i => G.voteStart + VOTE_MS * (G.voteExt && G.voteExt[i] ? 2 : 1);
-const voteOpenFor = i => !G.voteClosed && !(G.closedTeams || []).includes(i);
+const seqVote = () => !!G && !!G.multi && Array.isArray(G.voteOrder);
+const voteOpenFor = i => !G.voteClosed && (seqVote() ? G.voteCur === i : !(G.closedTeams || []).includes(i));
 let pickDur = VOTE_MS;
 function voteLeft(team = myTeam()) {
   if (!G || !G.multi || G.phase !== "vote" || !G.voteStart || team == null || !voteOpenFor(team)) return null;
   const ext = (G.voteExt && G.voteExt[team]) || (team === myTeam() && pickTeam != null);
   return G.voteStart + VOTE_MS * (ext ? 2 : 1) + (isGuest() ? clockOff : 0) - Date.now();
 }
-const iDecided = () => { const me = myTeam(); return me == null || me === G.turn || G.chals.some(c => c.team === me) || (G.passes || []).includes(me); };
-// L'arbitre ferme les votes équipe par équipe quand leur délai est dépassé (1,5 s de marge réseau)
+const iDecided = () => { const me = myTeam(); return me == null || me === G.turn || G.chals.some(c => c.team === me) || (G.passes || []).includes(me) || (seqVote() && G.voteCur !== me); };
+// Ouvre le vote de la prochaine équipe qui peut voter (celles sans jeton ou sans case libre passent d'office)
+function advanceVote() {
+  G.passes = G.passes || []; G.closedTeams = G.closedTeams || [];
+  while (G.voteIdx < G.voteOrder.length) {
+    const t = G.voteOrder[G.voteIdx], done = G.chals.some(c => c.team === t) || G.passes.includes(t);
+    const free = 1 + G.chals.length < cur().cards.length + 1;
+    if (!done && free && (G.players[t].tokens || 0) > 0) break;
+    if (!done) G.passes.push(t);
+    G.closedTeams.push(t); G.voteIdx++;
+  }
+  G.voteExt = {}; G.voteStart = Date.now();
+  if (G.voteIdx >= G.voteOrder.length) { G.voteCur = null; G.voteClosed = true; }
+  else G.voteCur = G.voteOrder[G.voteIdx];
+}
+// Démarre (ou redémarre) la série de votes adverses
+function startVotes() {
+  G.chals = []; G.passes = []; G.voteClosed = false; G.voteExt = {}; G.closedTeams = [];
+  if (G.multi) {
+    G.voteOrder = G.players.map((_, k) => (G.turn + 1 + k) % G.players.length).filter(i => i !== G.turn);
+    G.voteIdx = 0; advanceVote();
+  } else { G.voteStart = Date.now(); G.voteOrder = undefined; G.voteCur = null; }
+}
+// L'arbitre fait passer l'équipe qui a la main quand son délai est dépassé (1,5 s de marge réseau)
 function hostSweep() {
   if (!G || !G.multi || G.phase !== "vote" || !G.voteStart || G.voteClosed) return;
-  const now = Date.now(), prev = JSON.parse(JSON.stringify(G));
-  let changed = false, next = Infinity;
-  G.passes = G.passes || []; G.closedTeams = G.closedTeams || [];
-  G.players.forEach((_, i) => {
-    if (i === G.turn || G.closedTeams.includes(i)) return;
-    const end = teamDeadline(i) + 1500;
-    if (now >= end) {
-      if (!G.chals.some(c => c.team === i) && !G.passes.includes(i)) G.passes.push(i);
-      G.closedTeams.push(i); changed = true;
-    } else next = Math.min(next, end);
-  });
-  if (next === Infinity && !G.voteClosed) { G.voteClosed = true; changed = true; }
-  if (changed) afterChange(prev);
-  else if (next !== Infinity) voteTimerHost = setTimeout(hostSweep, next - now + 30);
+  const now = Date.now();
+  if (!seqVote() || G.voteCur == null) { // partie commencée avec une ancienne version : on bascule sur les votes à tour de rôle
+    const prev = JSON.parse(JSON.stringify(G));
+    G.voteOrder = G.players.map((_, k) => (G.turn + 1 + k) % G.players.length).filter(i => i !== G.turn);
+    G.voteIdx = 0; advanceVote(); afterChange(prev); return;
+  }
+  const end = teamDeadline(G.voteCur) + 1500;
+  if (now >= end) {
+    const prev = JSON.parse(JSON.stringify(G)), t = G.voteCur;
+    if (!G.chals.some(c => c.team === t) && !(G.passes || []).includes(t)) (G.passes = G.passes || []).push(t);
+    G.closedTeams = G.closedTeams || []; G.closedTeams.push(t); G.voteIdx++; advanceVote();
+    afterChange(prev);
+  } else voteTimerHost = setTimeout(hostSweep, end - now + 30);
 }
 function armVoteTimer() {
   clearTimeout(voteTimerLocal); clearTimeout(voteTimerHost);
@@ -1566,6 +1589,12 @@ function postState(prev) {
     }
   }
   if (G.phase !== "vote" || (G.multi && myTeam() != null && G.voteStart && !voteOpenFor(myTeam()))) { pickTeam = null; pickGap = null; }
+  // Votes relancés (réponse changée) : le choix de case en cours n'est plus valable
+  if (G.multi && prev && prev.voteStart !== G.voteStart && prev.voteCur === G.voteCur) { pickTeam = null; pickGap = null; }
+  // Notre tour de vote commence : petite vibration
+  if (G.multi && G.phase === "vote" && G.voteCur != null && G.voteCur === myTeam() && prev && (prev.voteCur !== G.voteCur || prev.voteStart !== G.voteStart) && navigator.vibrate) navigator.vibrate(60);
+  // Nouvelle carte ou réponse validée ailleurs : la fenêtre de réponse ouverte n'a plus lieu d'être
+  if (pendGap != null && (newCard || !activeHere() || !["listen", "vote"].includes(G.phase))) { sheetOnClose = null; pendGap = null; closeSheet(); }
   armVoteTimer();
   if (newCard) needTap(false);
   if (G.multi && G.phase === "vote" && activeHere() && prev && prev.phase === "vote" && allDecided() &&
@@ -1599,14 +1628,19 @@ function applyAction(a) {
     case "redraw": if (!active) return false; drawCard(); G.phase = "listen"; G.playSeq = (G.playSeq || 0) + 1; return true;
     case "gap": if (!active || G.phase !== "listen") return false; G.gap = a.i; return true;
     case "answer": {
-      if (!active || G.phase !== "listen" || G.gap == null) return false;
-      G.answer = { film: String(a.film || "").slice(0, 80), composer: String(a.composer || "").slice(0, 80) };
-      G.phase = "vote"; G.chals = []; G.passes = []; G.voteStart = Date.now(); G.voteClosed = false; G.voteExt = {}; G.closedTeams = [];
+      // Valide la réponse : la période (a.gap) et le film / compositeur arrivent ensemble.
+      // Pendant les votes : même période = simple correction (votes gardés) ; autre période = votes annulés et relancés.
+      if (!active || !["listen", "vote"].includes(G.phase)) return false;
+      const g = a.gap != null ? +a.gap : G.gap;
+      if (g == null || !(g >= 0 && g <= cur().cards.length)) return false;
+      const ans = { film: String(a.film || "").slice(0, 80), composer: String(a.composer || "").slice(0, 80) };
+      if (G.phase === "vote" && g === G.gap) { G.answer = ans; return true; }
+      G.gap = g; G.answer = ans; G.phase = "vote"; startVotes();
       return true;
     }
     case "back": {
       if (!active || G.phase !== "vote") return false;
-      G.phase = "listen"; G.chals = []; G.passes = []; G.voteStart = null; G.voteClosed = false; G.voteExt = {}; G.closedTeams = [];
+      G.phase = "listen"; G.chals = []; G.passes = []; G.voteStart = null; G.voteClosed = false; G.voteExt = {}; G.closedTeams = []; G.voteCur = null; G.voteOrder = undefined;
       return true;
     }
     case "votepick": {
@@ -1627,20 +1661,24 @@ function applyAction(a) {
       if (!pl || (pl.tokens || 0) <= 0 || G.chals.some(c => c.team === team)) return false;
       const used = [G.gap, ...G.chals.map(c => c.gap)];
       if (a.gap == null || used.includes(a.gap) || a.gap < 0 || a.gap > cur().cards.length) return false;
-      G.chals.push({ team, gap: a.gap }); G.passes = (G.passes || []).filter(t => t !== team); return true;
+      G.chals.push({ team, gap: a.gap }); G.passes = (G.passes || []).filter(t => t !== team);
+      if (seqVote()) { G.closedTeams.push(team); G.voteIdx++; advanceVote(); } // au tour de l'équipe suivante
+      return true;
     }
     case "pass": {
       if (!multi || G.phase !== "vote" || a.by == null || a.by === G.turn || !voteOpenFor(a.by)) return false;
       G.passes = G.passes || [];
       if (G.passes.includes(a.by)) return false;
-      G.passes.push(a.by); return true;
+      G.passes.push(a.by);
+      if (seqVote()) { G.closedTeams.push(a.by); G.voteIdx++; advanceVote(); }
+      return true;
     }
     case "unvote": {
       const team = multi ? a.by : a.team, n = G.chals.length;
-      if (G.phase !== "vote" || (multi && !voteOpenFor(team))) return false;
+      if (G.phase !== "vote" || seqVote() || (multi && !voteOpenFor(team))) return false; // à tour de rôle, un vote est définitif
       G.chals = G.chals.filter(c => c.team !== team); return G.chals.length !== n;
     }
-    case "reveal": if (!active || G.phase !== "vote") return false; resolveTurn(); return true;
+    case "reveal": if (!active || G.phase !== "vote" || (multi && !G.voteClosed)) return false; resolveTurn(); return true;
     case "bonus": {
       if (!active || G.phase !== "revealed") return false;
       const pl = cur();
@@ -1804,15 +1842,17 @@ function viewGame() {
   } else {
     mystery = slot ? `<div class="mystery bottom" id="playzone"><div class="playrow">${slot}<div class="muted">Toucher la carte entourée pour revoir les résultats</div></div></div>` : "";
   }
-  const canTap = (ph === "listen" && active) || (ph === "vote" && pickTeam != null);
+  // Le joueur du tour peut toucher n'importe quelle période, avant comme après avoir validé (une fenêtre s'ouvre)
+  const canTap = ((ph === "listen" || ph === "vote") && active && pickTeam == null) || (ph === "vote" && pickTeam != null);
+  const selGap = pendGap != null ? pendGap : G.gap; // case en cours de choix (fenêtre ouverte) ou case validée
   let tl = "";
   for (let i = 0; i <= cards.length; i++) {
     if (!rev) {
       const ch = chals.find(c => c.gap === i), mineP = pickTeam != null && pickGap === i;
-      const back = ph === "vote" && G.gap === i && active && pickTeam == null;
-      tl += `<button class="gap ${G.gap === i ? "sel" : ""} ${ch || mineP ? "chal" : ""} ${back ? "back" : ""}" data-g="${i}" ${canTap || back ? "" : "disabled"}
+      const back = ph === "vote" && G.gap === i && active && pickTeam == null && pendGap == null;
+      tl += `<button class="gap ${selGap === i ? "sel" : ""} ${(ch && selGap !== i) || mineP ? "chal" : ""} ${back ? "back" : ""}" data-g="${i}" ${canTap ? "" : "disabled"}
         ${back ? `aria-label="Modifier ma réponse"` : ""}>${
-        G.gap === i ? "🎧 " : ch ? "⚔️ " + esc(G.players[ch.team].name) + " · " : mineP ? "⚔️ Ton vote · " : ""}${gapLabel(cards, i)}${back ? EDIT_ICO : ""}</button>`;
+        selGap === i ? "🎧 " : ch ? "⚔️ " + esc(G.players[ch.team].name) + " · " : mineP ? "⚔️ Ton vote · " : ""}${gapLabel(cards, i)}${back ? EDIT_ICO : ""}</button>`;
     }
     if (i < cards.length) {
       const c = cards[i];
@@ -1854,13 +1894,15 @@ function viewGame() {
       actions = `<div class="row">${any ? `<button class="btn sec" id="vote" style="flex:0 0 42%">⚔️ Voter</button>` : ""}
         <button class="btn" id="reveal">Voir la réponse</button></div>`;
     } else if (active) {
-      actions = `<button class="btn" id="reveal">Voir la réponse</button>`;
+      // À plusieurs, la réponse ne se dévoile qu'une fois que toutes les équipes ont voté ou passé
+      actions = `<button class="btn" id="reveal" ${G.voteClosed ? "" : "disabled"}>Voir la réponse</button>`;
     } else {
       const myVote = chals.find(c => c.team === me), passed = (G.passes || []).includes(me);
-      const open = left != null && left > 0;
-      if (myVote) actions = open ? `<button class="btn sec" id="unvote">✕ Retirer mon vote (${esc(gapLabel(cards, myVote.gap))})</button>`
-        : `<button class="btn sec" disabled>⚔️ Vote enregistré : ${esc(gapLabel(cards, myVote.gap))}</button>`;
-      else if (passed || !open) actions = `<button class="btn sec" disabled>${passed ? "✓ Tu as passé ton tour de vote" : "Votes terminés"}</button>`;
+      const open = left != null && left > 0, waiting = seqVote() && !G.voteClosed && G.voteCur != null && G.voteCur !== me;
+      if (myVote) actions = `<button class="btn sec" disabled>⚔️ Vote enregistré : ${esc(gapLabel(cards, myVote.gap))}</button>`;
+      else if (passed) actions = `<button class="btn sec" disabled>✓ Tu as passé ton tour de vote</button>`;
+      else if (waiting) actions = `<button class="btn sec" disabled>⏳ Vote en cours : ${esc(G.players[G.voteCur].name)}</button>`;
+      else if (!open) actions = `<button class="btn sec" disabled>Votes terminés</button>`;
       else actions = `<div class="row eq">${ringBtn(`<button class="btn" id="vote" ${canVoteTeam(me) ? "" : "disabled"}>⚔️ Voter (${mine.tokens || 0} 🪙)</button>`, canVoteTeam(me) ? left : null)}
         <button class="btn sec" id="pass">Passer</button></div>`;
     }
@@ -1874,7 +1916,9 @@ function viewGame() {
         <span class="mytok">${mine.tokens || 0} 🪙</span></div>
       <div class="stats" style="margin-top:6px">${mine.cards.length}/${G.target} cartes${multi && !netOnline ? ` · <span class="netdot"></span> reconnexion…` : ""}</div></div>
       <button class="iconbtn" id="menu" aria-label="Menu">☰</button></div>
-    ${ctxBar(pickTeam != null ? hint : "", multi && !active ? `🎧 Au tour de <b>${esc(p.name)}</b>` : "")}
+    ${ctxBar(pickTeam != null ? hint : multi && ph === "vote" && !G.voteClosed && G.voteCur != null
+        ? (G.voteCur === me ? "⚔️ À ton tour de voter" : `⚔️ Vote de <b>${esc(G.players[G.voteCur].name)}</b>…`) : "",
+      multi && !active ? `🎧 Au tour de <b>${esc(p.name)}</b>` : "")}
     <div class="tlwrap" style="margin-top:8px"><div class="fade-top"></div><div class="timeline" id="tl">${tl}</div><div class="fade-bot"></div></div>
     ${mystery}
     ${actions}
@@ -1930,27 +1974,32 @@ function bindKids() {
   $("#kko") && ($("#kko").onclick = () => dispatch({ t: "kjudge", ok: false }));
   $("#next") && ($("#next").onclick = () => dispatch({ t: "next" }));
 }
-let tlScroll = 0, draft = { film: "", composer: "" }, draftCard = null;
-function openAnswer() {
-  if (draftCard !== G.card) { draft = { film: "", composer: "" }; draftCard = G.card; }
-  const cards = sortedCards(cur());
-  const editing = G.phase === "vote";
-  if (editing && G.answer) draft = { film: G.answer.film || "", composer: G.answer.composer || "" };
-  sheet(`<h2>${editing ? "Modifier ta réponse" : "Ta réponse"}</h2>
-    <p class="muted">Période choisie : <b style="color:var(--gold)">${esc(gapLabel(cards, G.gap))}</b>${editing ? " (verrouillée)" : ""}<br>
-      Propose le film et le compositeur. Si les deux sont justes, gagne 1 🪙 de vote.</p>
-    <label>🎬 Film ou série</label><input id="a_film" maxlength="80" autocomplete="off" placeholder="ex. Gladiator" value="${esc(draft.film)}">
-    <label>🎼 Compositeur ou interprète</label><input id="a_comp" maxlength="80" autocomplete="off" placeholder="ex. Hans Zimmer" value="${esc(draft.composer)}">
+let tlScroll = 0;
+// Fenêtre « Ta réponse » pour la période i. Rien n'est envoyé tant qu'on ne valide pas :
+// toucher en dehors (ou « Annuler ») ferme la fenêtre et oublie ce qui a été tapé.
+function openAnswer(i) {
+  if (i == null) return;
+  closeSheet();
+  const cards = sortedCards(cur()), voting = G.phase === "vote", same = voting && i === G.gap;
+  const prev = voting && G.answer ? G.answer : { film: "", composer: "" }; // dernière réponse validée
+  pendGap = i; render();
+  sheet(`<h2>${same ? "Modifier ta réponse" : voting ? "Changer de réponse" : "Ta réponse"}</h2>
+    <p class="muted">Période choisie : <b style="color:var(--gold)">${esc(gapLabel(cards, i))}</b><br>
+      Propose le film et le compositeur. Si les deux sont justes, gagne 1 🪙 de vote.${voting && !same && G.chals.length ? "<br><b>Les votes adverses seront annulés.</b>" : ""}</p>
+    <label>🎬 Film ou série</label><input id="a_film" maxlength="80" autocomplete="off" placeholder="ex. Gladiator" value="${esc(prev.film || "")}">
+    <label>🎼 Compositeur ou interprète</label><input id="a_comp" maxlength="80" autocomplete="off" placeholder="ex. Hans Zimmer" value="${esc(prev.composer || "")}">
     <button class="btn" id="a_ok" style="margin-top:14px">Valider ma réponse</button>
-    <button class="btn ghost" id="a_back">${editing ? "Annuler" : "Changer de période"}</button>`, {
+    <button class="btn ghost" id="a_back">Annuler</button>`, {
     a_back: closeSheet,
     a_ok: () => {
-      draft = { film: $("#a_film").value.trim(), composer: $("#a_comp").value.trim() };
-      closeSheet(); dispatch({ t: editing ? "editanswer" : "answer", film: draft.film, composer: draft.composer });
+      const film = $("#a_film").value.trim(), composer = $("#a_comp").value.trim(), had = G.chals.length, changed = voting && !same;
+      sheetOnClose = null; pendGap = null; closeSheet();
+      dispatch({ t: "answer", gap: i, film, composer });
+      if (isGuest()) { G.gap = i; G.phase = "vote"; if (changed) G.chals = []; render(); } // affichage immédiat en attendant l'arbitre
+      if (changed && had) toast("Nouvelle période : les votes adverses sont annulés.");
     }
-  });
+  }, () => { pendGap = null; if (screen === "game") render(); });
   const f = $("#a_film"), c = $("#a_comp");
-  f.oninput = () => draft.film = f.value; c.oninput = () => draft.composer = c.value;
   f.onkeydown = e => { if (e.key === "Enter") c.focus(); };
   c.onkeydown = e => { if (e.key === "Enter") $("#a_ok").click(); };
 }
@@ -1982,6 +2031,8 @@ function bindGame() {
   $("#pause") && ($("#pause").onclick = () => { pause(); });
   $("#devbtn") && ($("#devbtn").onclick = chooseDevice);
   tl.querySelectorAll(".gap").forEach(g => g.onclick = () => {
+    // Un toucher qui vient de fermer une fenêtre ne doit déclencher aucune action dessous
+    if ($("#ov") || Date.now() - sheetClosedAt < 450) return;
     const i = +g.dataset.g;
     if (G.phase === "vote" && pickTeam != null) {
       if (i === G.gap) { toast("Case choisie par " + cur().name + "."); return; }
@@ -1993,20 +2044,10 @@ function bindGame() {
       if (isGuest()) render();
       return;
     }
-    if (G.phase === "vote" && i === G.gap && activeHere() && pickTeam == null) {
-      const had = G.chals.length;
-      dispatch({ t: "back" });
-      if (isGuest()) { G.phase = "listen"; G.chals = []; render(); }
-      if (had) toast("Votes adverses annulés : tu peux modifier ta réponse.");
-      openAnswer(); return;
-    }
-    if (G.phase === "listen" && activeHere()) {
-      dispatch({ t: "gap", i });
-      if (isGuest()) G.gap = i; // affichage immédiat en attendant l'arbitre
-      openAnswer();
-    }
+    // Joueur du tour : toute période ouvre la fenêtre de réponse, avant comme après validation
+    if ((G.phase === "listen" || G.phase === "vote") && activeHere() && pickTeam == null) openAnswer(i);
   });
-  $("#answer") && ($("#answer").onclick = openAnswer);
+  $("#answer") && ($("#answer").onclick = () => openAnswer(G.gap));
   $("#vote") && ($("#vote").onclick = () => {
     if (G.multi) {
       const left0 = voteLeft(); pickTeam = myTeam(); pickGap = null;
@@ -2227,15 +2268,22 @@ function showResult() {
     <button class="btn" id="r_close">Fermer</button>`, { r_close: closeSheet });
 }
 /* ---------- Menu & feuilles ---------- */
-function sheet(html, handlers = {}) {
+// Fenêtre du bas. onClose est appelé quand elle se ferme sans passer par son action principale.
+let sheetOnClose = null, sheetClosedAt = 0, pendGap = null;
+function sheet(html, handlers = {}, onClose = null) {
   closeSheet();
+  sheetOnClose = onClose;
   const o = document.createElement("div"); o.className = "overlay"; o.id = "ov";
   o.innerHTML = `<div class="sheet">${coinify(html)}</div>`;
   o.onclick = e => { if (e.target === o) closeSheet(); };
   document.body.appendChild(o);
   Object.entries(handlers).forEach(([id, fn]) => { const el = document.getElementById(id); if (el) el.onclick = fn; });
 }
-function closeSheet() { const o = $("#ov"); if (o) o.remove(); }
+function closeSheet() {
+  const o = $("#ov"); if (!o) return;
+  o.remove(); sheetClosedAt = Date.now();
+  const f = sheetOnClose; sheetOnClose = null; if (f) f();
+}
 function openMenu() {
   const rows = G.players.map((pl, i) => `<div class="score"><span>${i === G.turn ? "🎧 " : ""}<b>${esc(pl.name)}</b>${G.multi && i === myTeam() ? ` <span class="muted">(toi)</span>` : ""}</span>
     <span>${pl.cards.length}/${G.target} cartes · ${pl.tokens || 0} 🪙</span></div>`).join("");
