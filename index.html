@@ -404,9 +404,19 @@ body.haschat #app{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
     <form id="chform" autocomplete="off"><input id="chmsg" maxlength="200" placeholder="Écrire un message…" enterkeyhint="send"><button type="submit" aria-label="Envoyer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button></form></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=56"></script>
-<script src="levels.js?v=56"></script>
-<script src="deezer.js?v=56" onerror="void 0"></script>
+<script src="songs.js?v=57"></script>
+<script src="levels.js?v=57"></script>
+<script src="deezer.js?v=57" onerror="void 0"></script>
+<script>
+// Garde-fou : si songs.js ou levels.js est absent ou invalide (par ex. deezer.js déposé sous le nom songs.js),
+// on affiche un message clair au lieu d'un écran vide.
+if (typeof SONGS === "undefined" || typeof NIVEAUX === "undefined") {
+  document.getElementById("app").innerHTML = '<div class="screen"><h2>Fichier manquant</h2><p class="muted">' +
+    (typeof SONGS === "undefined" ? "Le fichier <b>songs.js</b> est absent ou invalide." : "Le fichier <b>levels.js</b> est absent ou invalide.") +
+    (typeof DEEZER !== "undefined" && typeof SONGS === "undefined" ? " Le contenu de deezer.js semble avoir été déposé sous le nom songs.js." : "") +
+    " Dépose à nouveau les fichiers sur GitHub, puis recharge la page." + "</p></div>";
+}
+</script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -503,7 +513,7 @@ const SONG = ALL.map((r, i) => {
 });
 if (!HAS_LEVELS) setTimeout(() => toast("Fichier levels.js absent : dépose-le sur GitHub pour les nouveaux niveaux."), 900);
 const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
-const APP_VERSION = "56 (Hitster films & séries)";
+const APP_VERSION = "57 (Hitster films & séries)";
 function b64url(buf) {
   return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
