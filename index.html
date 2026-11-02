@@ -159,6 +159,14 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
 .hint b{color:var(--gold)}
 
 .ico{width:20px;height:20px;vertical-align:-4px;margin-right:4px}
+/* Icônes au trait (remplacent les emojis) : un espace régulier les sépare du texte */
+.i{display:inline-block;width:1.15em;height:1.15em;vertical-align:-.2em;margin-right:.45em;flex:none;stroke-width:1.8}
+.i.after{margin:0 0 0 .35em}
+.i.solo{margin:0;width:22px;height:22px;vertical-align:middle}
+.i.gold{color:var(--gold)}
+.i.fill{fill:currentColor;stroke:none}
+.trophy .i,.kempty .i.big{margin:0;width:64px;height:64px;stroke-width:1.3;color:var(--gold)}
+.lvlgrid .i{width:1.25em;height:1.25em}
 .ico.big{width:24px;height:24px;color:var(--gold)}
 .tokens{display:flex;flex-direction:column;align-items:flex-end;font-size:13px;color:var(--muted);line-height:1.5;padding-top:2px;white-space:nowrap}
 .mytok{font-size:18px;font-weight:800;color:var(--gold)}
@@ -188,8 +196,6 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
 .teamcard.playing{border-color:var(--gold)}
 .ychips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .ychip{font-family:var(--yfont);font-weight:700;color:var(--gold2);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:2px 8px;font-size:14px}
-#playerbar.needtap{animation:needtap 1.1s ease-in-out infinite}
-@keyframes needtap{0%,100%{box-shadow:0 0 0 0 rgba(var(--acc-rgb),.0)}50%{box-shadow:0 0 0 6px rgba(var(--acc-rgb),.55)}}
 .coin{display:inline-block;width:1em;height:1em;border-radius:50%;vertical-align:-.15em;margin:0 .05em;
   background:radial-gradient(circle at 35% 30%,#fff6c8 0 12%,#ffd34d 30%,#e8a515 70%,#b47a08 100%);
   box-shadow:inset 0 0 0 .08em #a86f05,inset 0 0 0 .16em #ffd968}
@@ -296,18 +302,6 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
 .themes button{border:2px solid var(--line);border-radius:var(--r);padding:10px;background:var(--card);color:var(--text);text-align:left;font-size:14px;font-weight:700}
 .themes button.on{border-color:var(--gold)}
 .sw{display:flex;gap:4px;margin-bottom:8px}.sw i{flex:1;height:22px;border-radius:6px;display:block}
-/* Lecteur intégré */
-/* Le lecteur Spotify reste invisible ; il ne s'affiche (titre masqué) que si le téléphone exige un appui direct dessus */
-#playerbar{position:fixed;left:0;bottom:0;width:300px;height:80px;opacity:0;pointer-events:none;z-index:-1;overflow:hidden;border-radius:12px;background:#000}
-#playerbar iframe{display:block;border:0;width:100%;height:80px}
-#playerbar #embed{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%)}
-#playerbar.needtap.show{background:var(--card);border-radius:18px}
-#playerbar.needtap.show{opacity:1;pointer-events:auto;z-index:15;border:1px solid var(--gold)}
-#playerbar.needtap .mask{display:flex}
-#playerbar .mask{display:none;position:absolute;left:0;top:0;bottom:0;right:74px;background:var(--card);display:flex;flex-direction:column;
-  justify-content:center;padding:0 14px;font-size:14px;z-index:2}
-#playerbar .mask span{color:var(--gold);font-size:13px;margin-top:2px}
-#playerbar.revealed .mask{display:none}
 .pp{flex:none;width:52px;height:52px;border-radius:50%;border:0;padding:0;position:relative;background:var(--soft);color:var(--text);cursor:pointer}
 .pp svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
 .pp .arc{fill:none;stroke:var(--gold);stroke-width:3.5;stroke-linecap:round;stroke-dasharray:100;transition:stroke-dashoffset .35s linear}
@@ -367,14 +361,16 @@ body.haschat #app{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
 .chbar{display:block;width:100%;border:0;background:none;color:var(--text);padding:8px 0 0;cursor:pointer;text-align:left;font:inherit}
 .grab{display:block;width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto}
 :root:not([data-theme="pop"]) .grab{background:rgba(255,255,255,.22)}
-.chrow{display:flex;align-items:center;gap:12px;height:44px;padding:0 4px}
+.chrow{display:flex;align-items:center;gap:12px;height:44px;padding:0 4px;overflow:hidden;transition:height .3s ease,opacity .18s ease}
 .chic{flex:none;width:22px;height:22px;color:var(--muted)}
 #chlast{flex:1;min-width:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #chlast b{font-weight:700}
 #chlast.idle{color:var(--muted)}
 .chdot{display:none;flex:none;width:8px;height:8px;border-radius:50%;background:var(--gold)}
 #chat.unread .chdot{display:block}
-#chat.open .chrow{display:none}
+/* À l'ouverture, l'icône et « Messages » s'effacent en douceur pendant que le panneau monte */
+#chat.open .chrow{height:0;opacity:0}
+.chbar{transition:padding .3s ease}
 #chat.open .chbar{padding:8px 0 10px}
 .chpanel{max-height:0;overflow:hidden;transition:max-height .3s ease;display:flex;flex-direction:column;margin:0 -6px;padding:0 6px}
 #chat.open .chpanel{max-height:60dvh}
@@ -407,13 +403,10 @@ body.haschat #app{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
   <div class="chpanel"><div id="chlist"></div>
     <form id="chform" autocomplete="off"><input id="chmsg" maxlength="200" placeholder="Écrire un message…" enterkeyhint="send"><button type="submit" aria-label="Envoyer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button></form></div>
 </div>
-<div id="playerbar">
-  <div id="embed"></div>
-  <div class="mask"><b>🎵 Musique mystère</b><span>Touche ▶ pour lancer la musique →</span></div>
-</div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=53"></script>
-<script src="levels.js?v=53"></script>
+<script src="songs.js?v=55"></script>
+<script src="levels.js?v=55"></script>
+<script src="deezer.js?v=55" onerror="void 0"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -439,6 +432,41 @@ function applyTheme(id) {
   const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = t.meta;
 }
 const COIN = '<span class="coin" aria-label="jeton"></span>';
+// Icônes au trait, dans l'esprit Lucide (ISC). ic(nom, classes) renvoie un petit SVG qui suit la couleur du texte.
+const ICONS = {
+  headphones: '<path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/>',
+  swords: '<path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="m13 19 6-6"/><path d="m16 16 4 4"/><path d="m19 21 2-2"/><path d="M14.5 6.5 18 3h3v3l-3.5 3.5"/><path d="m5 14 4 4"/><path d="m7 17-3 3"/><path d="m3 19 2 2"/>',
+  replay: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+  refresh: '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
+  play: '<path d="M7 4.5v15l12-7.5z"/>',
+  pause: '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
+  speaker: '<path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/>',
+  phone: '<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
+  phones: '<rect x="2.5" y="4" width="8" height="15" rx="2"/><rect x="13.5" y="4" width="8" height="15" rx="2"/><path d="M5.5 16h2M16.5 16h2"/>',
+  smile: '<circle cx="12" cy="12" r="9.5"/><path d="M8 14.5s1.5 2 4 2 4-2 4-2"/><path d="M9 9.5h.01M15 9.5h.01"/>',
+  lvl1: '<path d="M6 20v-5"/><path d="M12 20V11" opacity=".3"/><path d="M18 20V6" opacity=".3"/>',
+  lvl2: '<path d="M6 20v-5"/><path d="M12 20V11"/><path d="M18 20V6" opacity=".3"/>',
+  lvl3: '<path d="M6 20v-5"/><path d="M12 20V11"/><path d="M18 20V6"/>',
+  film: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 7.5h4M3 12h18M3 16.5h4M17 7.5h4M17 16.5h4"/>',
+  music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  hourglass: '<path d="M5 22h14M5 2h14"/><path d="M17 22v-4.2a2 2 0 0 0-.6-1.4L12 12l-4.4 4.4a2 2 0 0 0-.6 1.4V22"/><path d="M7 2v4.2a2 2 0 0 0 .6 1.4L12 12l4.4-4.4a2 2 0 0 0 .6-1.4V2"/>',
+  lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  unlock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.8-1.2"/>',
+  star: '<path d="m12 2.8 2.9 5.9 6.4.9-4.6 4.5 1.1 6.4L12 17.5l-5.8 3 1.1-6.4-4.6-4.5 6.4-.9z"/>',
+  trophy: '<path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4.5a2.5 2.5 0 0 0 2.5 4M17 6h2.5a2.5 2.5 0 0 1-2.5 4"/><path d="M12 14v4M8 21h8M9.5 18h5"/>',
+  pulse: '<path d="M22 12h-4l-3 8-6-16-3 8H2"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+  playlist: '<path d="M3 6h12M3 12h12M3 18h7"/><path d="M17 18V8l4-1"/><circle cx="15" cy="18" r="2"/>',
+  sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  chev: '<path d="m6 9 6 6 6-6"/>'
+};
+const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
+// Lignes de résultat : le ✓ / ✗ de tête devient une icône
+const lineIc = h => h.replace(/^✓ /, ic("check")).replace(/^✗ /, ic("x"));
 const coinify = h => String(h).replace(/🪙/g, COIN);
 function toast(msg, ms = 2800) {
   const old = $(".toast"); if (old) old.remove();
@@ -450,8 +478,8 @@ const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "
 function rnd() { try { const u = new Uint32Array(1); crypto.getRandomValues(u); return u[0] / 4294967296; } catch { return Math.random(); } }
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
-// [film, année, compositeur, morceau, titre original, niveau "F"/"M", id Spotify optionnel]
-// songs.js donne les morceaux (et leurs identifiants Spotify) ; levels.js donne les niveaux et ajoute les séries
+// [film, année, compositeur, morceau, titre original, niveau "F"/"M", (ancien id Spotify, ignoré)]
+// songs.js donne les morceaux ; levels.js donne les niveaux et ajoute les séries ; deezer.js donne les identifiants Deezer
 const songKey = s => s.orig + "|" + s.track;
 const rowKey = r => (r[4] || r[0]) + "|" + r[3];
 const HAS_LEVELS = typeof NIVEAUX !== "undefined";
@@ -474,204 +502,106 @@ const SONG = ALL.map((r, i) => {
   return { id: i, film: r[0], year: r[1], composer: r[2], track: r[3], orig: r[4] || r[0], level: LVL[code] || "moyen", series, kids: KIDS_KEYS.has(key), sid: r[6] || "" };
 });
 if (!HAS_LEVELS) setTimeout(() => toast("Fichier levels.js absent : dépose-le sur GitHub pour les nouveaux niveaux."), 900);
-// Le jeu peut tourner sans connexion Spotify si le morceau a déjà son identifiant dans songs.js (lecteur intégré)
-const sharedUri = s => (typeof G !== "undefined" && G && G.card === s.id && G.curUri) || null;
-const needsLogin = s => playMode() === "connect" || !(s.sid || (LS.get("ids2", {}) || {})[songKey(s)] || sharedUri(s));
-const allReady = () => playMode() === "embed" && SONG.every(s => s.sid);
 const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
-
-/* ================= Spotify : connexion (PKCE) ================= */
-const REDIRECT_URI = location.origin + location.pathname;
-const SCOPES = "user-read-playback-state user-modify-playback-state playlist-modify-private playlist-modify-public";
-const APP_VERSION = "53 (Hitster films & séries)";
-const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
-const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
-
+const APP_VERSION = "55 (Hitster films & séries)";
 function b64url(buf) {
   return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 function randStr(n) { const a = new Uint8Array(n); crypto.getRandomValues(a); return b64url(a).slice(0, n); }
 
-async function login() {
-  if (!clientId()) { toast("Ajoute d'abord ton Client ID Spotify dans les réglages."); return go("settings"); }
-  const verifier = randStr(64);
-  const challenge = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
-  const state = randStr(16);
-  LS.set("pkce", { verifier, state });
-  const p = new URLSearchParams({ client_id: clientId(), response_type: "code", redirect_uri: REDIRECT_URI,
-    code_challenge_method: "S256", code_challenge: challenge, scope: SCOPES, state });
-  location.href = "https://accounts.spotify.com/authorize?" + p;
+/* ================= Musique : extraits Deezer (30 s, sans compte) =================
+   Chaque morceau a un identifiant Deezer : celui de deezer.js (exporté par l'organisateur),
+   sinon celui trouvé sur ce téléphone (mémoire ch_dz), sinon il est cherché sur Deezer.
+   Le lien de l'extrait expire au bout de quelques heures : on le redemande à Deezer à chaque carte. */
+const DZ_FILE = typeof DEEZER !== "undefined" ? DEEZER : {};
+const sharedUri = s => (typeof G !== "undefined" && G && G.card === s.id && G.curUri) || null;
+const dzOf = u => { const m = String(u || "").match(/^deezer:(\d+)$/); return m ? m[1] : null; };
+const knownDz = s => DZ_FILE[songKey(s)] || (LS.get("dz", {}) || {})[songKey(s)] || dzOf(sharedUri(s)) || null;
+const knownUri = s => { const id = knownDz(s); return id ? "deezer:" + id : null; };
+// Appel à l'API publique de Deezer (JSONP : Deezer n'autorise pas les appels directs depuis une page web)
+let jpN = 0;
+function dzApi(path, ms = 9000) {
+  return new Promise((res, rej) => {
+    const cb = "__dz" + (++jpN) + "_" + Date.now().toString(36), s = document.createElement("script");
+    const done = () => { clearTimeout(t); try { delete window[cb]; } catch { window[cb] = undefined; } s.remove(); };
+    const t = setTimeout(() => { done(); rej(new Error("délai")); }, ms);
+    window[cb] = d => { done(); if (d && d.error) { const e = new Error(d.error.message || "Deezer"); e.code = d.error.code; rej(e); } else res(d); };
+    s.onerror = () => { done(); rej(new Error("réseau")); };
+    s.src = "https://api.deezer.com" + path + (path.includes("?") ? "&" : "?") + "output=jsonp&callback=" + cb;
+    document.head.appendChild(s);
+  });
 }
-function logout() { LS.del("tok"); render(); }
-const isLogged = () => !!LS.get("tok", null);
-
-async function handleRedirect() {
-  const q = new URLSearchParams(location.search);
-  const code = q.get("code"), err = q.get("error");
-  if (!code && !err) return;
-  history.replaceState(null, "", REDIRECT_URI);
-  if (err) { toast("Connexion Spotify refusée (" + err + ")."); return; }
-  const pk = LS.get("pkce", null);
-  if (!pk || pk.state !== q.get("state")) { toast("Connexion expirée, réessaie."); return; }
-  const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: REDIRECT_URI,
-    client_id: clientId(), code_verifier: pk.verifier });
-  try {
-    const r = await fetch("https://accounts.spotify.com/api/token", { method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
-    const j = await r.json();
-    if (!r.ok) { toast("Erreur Spotify : " + (j.error_description || j.error)); return; }
-    saveToken(j); LS.del("pkce"); toast("Connecté à Spotify ✓");
-  } catch { toast("Impossible de joindre Spotify."); }
+// Quota Deezer (50 appels / 5 s) : on attend et on recommence
+async function dzCall(path, tries = 0) {
+  try { return await dzApi(path); }
+  catch (e) { if (e.code === 4 && tries < 4) { await sleep(5200); return dzCall(path, tries + 1); } throw e; }
 }
-function saveToken(j) {
-  const old = LS.get("tok", {}) || {};
-  LS.set("tok", { access: j.access_token, refresh: j.refresh_token || old.refresh, exp: Date.now() + (j.expires_in - 60) * 1000, scope: j.scope || old.scope || "" });
-}
-async function getToken() {
-  const t = LS.get("tok", null); if (!t) return null;
-  if (Date.now() < t.exp) return t.access;
-  if (!t.refresh) return null;
-  try {
-    const r = await fetch("https://accounts.spotify.com/api/token", { method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: t.refresh, client_id: clientId() }) });
-    if (!r.ok) { LS.del("tok"); return null; }
-    saveToken(await r.json()); return LS.get("tok").access;
-  } catch { return null; }
-}
-class AuthError extends Error {}
-async function api(path, opts = {}, tries = 0) {
-  const tok = await getToken();
-  if (!tok) throw new AuthError();
-  const r = await fetch("https://api.spotify.com/v1" + path, { ...opts,
-    headers: { Authorization: "Bearer " + tok, "Content-Type": "application/json", ...(opts.headers || {}) } });
-  if (r.status === 401) { LS.del("tok"); throw new AuthError(); }
-  if (r.status === 429 && tries < 3) { await sleep((+r.headers.get("Retry-After") || 2) * 1000); return api(path, opts, tries + 1); }
-  return r;
-}
-
-/* ================= Spotify : trouver le morceau ================= */
 function lastName(c) { const first = c.split(/&| et | and |,/)[0].trim().split(" "); return first[first.length - 1]; }
-async function resolveSong(s) {
-  if (s.sid) return "spotify:track:" + s.sid;
-  if (sharedUri(s)) return sharedUri(s);
-  const cache = LS.get("ids2", {}), key = songKey(s);
-  if (cache[key]) return cache[key];
-  const ln = norm(lastName(s.composer)), tn = norm(s.track), fn = norm(s.orig);
-  const film = String(s.orig).replace(/\(.*?\)/g, "").trim(), disp = String(s.film).replace(/\(.*?\)/g, "").trim(), dn = norm(disp);
-  const queries = [...new Set([`${s.track} ${film}`, `${s.track} ${lastName(s.composer)}`, `${s.track} ${disp}`, `${film} ${lastName(s.composer)}`, s.track])];
+// Cherche le morceau sur Deezer et note les résultats (artiste, titre, album = film, bande originale, VF en Kids…)
+async function searchDz(s) {
+  const ln = norm(lastName(s.composer)), tn = norm(s.track.replace(/\(.*?\)/g, "")), film = String(s.orig).replace(/\(.*?\)/g, "").trim();
+  const disp = String(s.film).replace(/\(.*?\)/g, "").trim(), fn = norm(film), dn = norm(disp);
+  const tq = s.track.replace(/\(.*?\)/g, "").replace(/"/g, "").trim();
+  const queries = [...new Set([`track:"${tq}" artist:"${lastName(s.composer)}"`, `${tq} ${film}`, `${tq} ${lastName(s.composer)}`, `${tq} ${disp}`, `${film} ${lastName(s.composer)}`, tq])];
   const tw = tn.split(" ").filter(w => w.length > 2);
+  const bad = /karaok|instrumental|live|cover|piano|lullab|berceuse|remix|acoustic|acoustique|tribute|8 bit|music box|reprise|version longue|extended|made famous|in the style/;
   let best = null, bestScore = 0;
   for (const q of queries) {
-    const r = await api("/search?type=track&limit=10&q=" + encodeURIComponent(q));
-    if (!r.ok) continue;
-    const items = ((await r.json()).tracks || {}).items || [];
+    let items = [];
+    try { items = ((await dzCall("/search?limit=15&q=" + encodeURIComponent(q))) || {}).data || []; } catch (e) { if (e.message === "réseau" || e.message === "délai") throw e; continue; }
     for (const t of items) {
-      if (!t) continue;
-      const name = norm(t.name), album = norm(t.album && t.album.name || "");
+      if (!t || !t.id) continue;
+      const name = norm(t.title || ""), album = norm((t.album && t.album.title) || ""), artist = norm((t.artist && t.artist.name) || "");
       let sc = 0;
-      if (t.artists.some(a => norm(a.name).includes(ln))) sc += 2;
+      if (ln && artist.includes(ln)) sc += 2;
       if (name.includes(tn) || (name.length > 3 && tn.includes(name))) sc += 3;
       else if (tw.length && tw.filter(w => name.split(" ").includes(w)).length / tw.length >= .6) sc += 2;
-      if ((fn && album.includes(norm(film))) || (dn && album.includes(dn))) sc += 1;
-      const bad = /karaok|instrumental|live|orchestr|cover|piano|lullab|berceuse|remix|acoustic|acoustique|tribute|8 bit|music box|reprise|version longue|extended/;
+      if ((fn && album.includes(fn)) || (dn && album.includes(dn))) sc += 1;
       if (bad.test(name + " " + album) && !bad.test(tn)) sc -= 3;
       if (/bande originale|soundtrack|original motion picture|b o |vf|version francaise/.test(album)) sc += 1;
-      if (s.level === "kids" && /francais|vf|version francaise/.test(album)) sc += 1;
+      if (s.kids && /francais|vf|version francaise|bande originale francaise/.test(album + " " + name)) sc += 1;
+      if (!t.preview) sc -= 5; // sans extrait, inutilisable
       if (sc > bestScore) { bestScore = sc; best = t; }
     }
     if (bestScore >= 5) break;
   }
   if (!best || bestScore < 2) return null;
-  const uri = best.uri;
-  cache[key] = uri; LS.set("ids2", cache);
-  return uri;
+  const c = LS.get("dz", {}) || {}; c[songKey(s)] = String(best.id); LS.set("dz", c);
+  return String(best.id);
+}
+async function resolveSong(s) {
+  const id = knownDz(s) || await searchDz(s);
+  return id ? "deezer:" + id : null;
+}
+// Lien frais de l'extrait (les liens Deezer expirent) ; gardé quelques minutes
+const previewCache = new Map();
+async function previewUrl(id, fresh = false) {
+  const c = previewCache.get(id);
+  if (c && !fresh && Date.now() - c.at < 20 * 60000) return c.url;
+  const t = await dzCall("/track/" + id);
+  if (!t || !t.preview) throw new Error("sans extrait");
+  previewCache.set(id, { url: t.preview, at: Date.now() });
+  return t.preview;
 }
 
-/* ================= Spotify : lecture ================= */
-async function listDevices() {
-  const r = await api("/me/player/devices");
-  if (!r.ok) return [];
-  return (await r.json()).devices || [];
+/* ---------- Lecteur audio du jeu (invisible, sans widget) ---------- */
+const AU = new Audio(); AU.preload = "auto";
+let auCard = null, auUri = null, auWant = false, auErr = 0;
+// iPhone : le son doit avoir été lancé une première fois par un toucher. On « déverrouille » le lecteur
+// au premier toucher sur la page, ce qui permet ensuite de lancer les extraits à distance (parties à plusieurs).
+const SILENT = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+let auUnlocked = false;
+function unlockAudio() {
+  if (auUnlocked) return; auUnlocked = true;
+  if (!AU.src) AU.src = SILENT;
+  AU.muted = true;
+  AU.play().then(() => { if (!auWant) { AU.pause(); try { AU.currentTime = 0; } catch {} } AU.muted = false; })
+    .catch(() => { AU.muted = false; auUnlocked = false; });
 }
-let lastPlayError = "", lastDevice = "", lastPlayState = "";
-async function getPlayback() {
-  try { const r = await api("/me/player"); if (r.status !== 200) return null; return await r.json(); } catch { return null; }
-}
-async function playUri(uri) {
-  const body = JSON.stringify({ uris: [uri], position_ms: (LS.get("startAt", 0) || 0) * 1000 });
-  const tryPlay = async id => {
-    const r = await api("/me/player/play" + (id ? "?device_id=" + encodeURIComponent(id) : ""), { method: "PUT", body });
-    if (!r.ok) { try { const j = await r.json(); lastPlayError = r.status + " " + ((j.error && (j.error.reason || j.error.message)) || ""); } catch { lastPlayError = String(r.status); } }
-    return r;
-  };
-  const devs = await listDevices();
-  const pref = LS.get("device", "");
-  const dev = devs.find(d => d.id === pref) || devs.find(d => d.is_active) ||
-    devs.find(d => d.type === "Smartphone") || devs.find(d => d.type === "Computer") || devs[0];
-  if (!dev) {
-    // aucun appareil listé : on tente quand même sur l'appareil actif
-    const r = await tryPlay("");
-    lastDevice = "appareil actif";
-    return r.ok ? "ok" : (r.status === 403 ? "premium" : "nodevice");
-  }
-  if (!dev.is_active) {
-    // « réveille » l'appareil en lui transférant la lecture
-    try { await api("/me/player", { method: "PUT", body: JSON.stringify({ device_ids: [dev.id], play: false }) }); } catch {}
-    await sleep(700);
-  }
-  let r = await tryPlay(dev.id);
-  if (!r.ok && r.status !== 403) { await sleep(1200); r = await tryPlay(dev.id); }
-  if (r.ok) {
-    lastDevice = dev.name + (dev.type ? " (" + dev.type + ")" : "");
-    // Vérifie que Spotify joue vraiment ; sinon relance la lecture
-    for (let k = 0; k < 3; k++) {
-      await sleep(1500);
-      const st = await getPlayback();
-      if (st && st.is_playing && st.item && st.item.uri === uri) return "ok";
-      if (st && st.item && st.item.uri === uri && !st.is_playing) {
-        await api("/me/player/play?device_id=" + encodeURIComponent(dev.id), { method: "PUT" });
-      } else {
-        await tryPlay(dev.id);
-      }
-    }
-    const st = await getPlayback();
-    if (st && st.is_playing && st.item && st.item.uri === uri) return "ok";
-    lastPlayState = !st ? "aucun état" : !st.item ? "rien de chargé" : st.item.uri !== uri ? "un autre titre est chargé" : "titre chargé mais en pause";
-    return "silent";
-  }
-  return r.status === 403 ? "premium" : "nodevice";
-}
-const playMode = () => LS.get("mode", "embed"); // "embed" = lecteur intégré, "connect" = appli Spotify / autre appareil
-let embedApiResolve; const embedApi = new Promise(r => embedApiResolve = r);
-window.onSpotifyIframeApiReady = API => embedApiResolve(API);
-let EmbedCtl = null, embedState = {}, readyWaiters = [];
-let embedUsed = false;
-function showBar() { placeBar(); }
-// Le lecteur reste invisible. Si le téléphone bloque la lecture, il apparaît par-dessus la carte du bas (titre masqué)
-function placeBar() {
-  const bar = $("#playerbar"); if (!bar) return;
-  const zone = $("#playzone");
-  if (bar.classList.contains("needtap") && zone && screen === "game") {
-    const r = zone.getBoundingClientRect();
-    const h = Math.max(80, r.height);
-    bar.style.top = Math.max(0, r.top + (r.height - h) / 2) + "px"; bar.style.bottom = "auto"; bar.style.height = h + "px";
-    bar.style.left = r.left + "px"; bar.style.width = Math.min(r.width, innerWidth - r.left) + "px";
-    bar.classList.add("show");
-  } else {
-    bar.classList.remove("show");
-    bar.style.top = "auto"; bar.style.bottom = "0"; bar.style.left = "0"; bar.style.width = "300px"; bar.style.height = "80px";
-  }
-}
-function needTap(on) {
-  const bar = $("#playerbar"); if (!bar) return;
-  bar.classList.toggle("needtap", !!on); placeBar();
-
-}
-// Bouton rond lecture / pause, avec la progression du morceau en anneau
-const curUriOk = () => { if (!G || G.card == null) return null; const u = knownUri(SONG[G.card]); return EmbedCtl && u && embedState.playingURI === u ? u : null; };
-const ppCls = () => !curUriOk() ? "idle" : embedState.isBuffering ? "buf" : embedState.isPaused === false ? "playing" : "paused";
-const ppProg = () => curUriOk() && embedState.duration ? Math.min(1, (embedState.position || 0) / embedState.duration) : 0;
+document.addEventListener("pointerdown", unlockAudio, true);
+const auPlaying = () => !AU.paused && !AU.ended && auCard != null && G && auCard === G.card;
+const ppCls = () => !G || auCard !== G.card ? "idle" : auWant && AU.readyState < 3 && !AU.paused ? "buf" : auPlaying() ? "playing" : "paused";
+const ppProg = () => G && auCard === G.card && AU.duration ? Math.min(1, AU.currentTime / AU.duration) : 0;
 function ppHtml() {
   return `<button id="pp" class="pp ${ppCls()}" aria-label="Lecture ou pause"><svg viewBox="0 0 52 52"><circle class="arc" cx="26" cy="26" r="23" pathLength="100" style="stroke-dashoffset:${100 - ppProg() * 100}"/></svg><span class="ic"></span></button>`;
 }
@@ -680,113 +610,40 @@ function ppUpdate() {
   b.className = "pp " + ppCls();
   const arc = b.querySelector(".arc"); if (arc) arc.style.strokeDashoffset = 100 - ppProg() * 100;
 }
-function ppToggle() {
-  if (playMode() !== "embed") { playCurrent(); return; }
-  if (!curUriOk()) { playCurrent(); return; }
-  if (embedState.isPaused === false) { try { EmbedCtl.pause(); } catch {} return; }
-  try { EmbedCtl.resume(); } catch { try { EmbedCtl.togglePlay(); } catch {} }
-  setTimeout(() => { if (embedState.isPaused !== false) needTap(true); }, 2200);
+["play", "pause", "timeupdate", "waiting", "playing", "ended", "loadedmetadata"].forEach(e => AU.addEventListener(e, ppUpdate));
+// Lien expiré ou coupé : on redemande un lien frais une fois
+AU.addEventListener("error", () => {
+  if (!auUri || AU.src === SILENT || auErr > 0 || !G || auCard !== G.card) return;
+  auErr++; const id = dzOf(auUri), card = auCard, want = auWant;
+  previewUrl(id, true).then(u => { if (G && G.card === card) { AU.src = u; if (want) AU.play().catch(() => {}); } }).catch(() => {});
+});
+// Prépare l'extrait de la carte en cours (sans le lancer) : il démarre tout de suite au toucher sur Lecture
+async function loadCard(card, uri) {
+  if (auCard === card && auUri === uri && AU.src && AU.src !== SILENT) return true;
+  const url = await previewUrl(dzOf(uri));
+  if (!G || G.card !== card) return false;
+  if (auCard !== card || auUri !== uri) { AU.pause(); AU.src = url; auCard = card; auUri = uri; auErr = 0; AU.load(); }
+  return true;
 }
-window.addEventListener("resize", placeBar);
-setInterval(placeBar, 400);
-function waitReady(ms) { return new Promise(res => { readyWaiters.push(res); setTimeout(res, ms); }); }
-async function getEmbed(uri) {
-  if (EmbedCtl) return { c: EmbedCtl, fresh: false };
-  const API = await Promise.race([embedApi, sleep(8000).then(() => null)]);
-  if (!API) throw new Error("embed-api");
-  return new Promise(res => {
-    API.createController($("#embed"), { uri, width: "100%", height: 80 }, c => {
-      EmbedCtl = c;
-      c.addListener("ready", () => { const w = readyWaiters; readyWaiters = []; w.forEach(f => f()); });
-      c.addListener("playback_update", e => {
-        embedState = e.data || {};
-        ppUpdate();
-        if (embedState.isPaused === false) { const bar = $("#playerbar"); if (bar && bar.classList.contains("needtap")) needTap(false); }
-      });
-      res({ c, fresh: true });
-    });
-  });
-}
-let lastLoadedUri = null;
-const knownUri = s => s.sid ? "spotify:track:" + s.sid : ((LS.get("ids2", {}) || {})[songKey(s)] || sharedUri(s) || null);
-// Charge (sans lancer) le morceau de la carte en cours dans le lecteur : la bonne musique est prête et jamais celle d'avant
-function ensureEmbedTrack() {
-  if (playMode() !== "embed" || !EmbedCtl || !G || G.card == null) return;
+function ensureTrack() {
+  if (!G || G.card == null || G.phase === "revealed" && auCard === G.card) return;
   if (!(activeHere() || G.remote)) return;
-  const uri = knownUri(SONG[G.card]);
-  if (uri && lastLoadedUri !== uri) { try { EmbedCtl.loadUri(uri); lastLoadedUri = uri; } catch {} }
+  const s = SONG[G.card], uri = knownUri(s);
+  if (uri) loadCard(G.card, uri).catch(() => {});
 }
-async function playEmbedded(uri) {
-  embedUsed = true; showBar(true);
-  const { c, fresh } = await getEmbed(uri);
-  showBar(screen === "game");
-  if (fresh) { lastLoadedUri = uri; await waitReady(5000); }
-  else if (lastLoadedUri !== uri) { c.loadUri(uri); lastLoadedUri = uri; await waitReady(4000); }
-  else { try { c.seek(0); } catch {} }
-  try { c.play(); } catch {}
-  await sleep(2500);
-  const ok = embedState.playingURI === uri && embedState.isPaused === false;
-  needTap(!ok); ppUpdate();
-  return ok;
+async function playDeezer(card, uri) {
+  auWant = true;
+  if (auCard === card && auUri === uri && AU.src && AU.src !== SILENT) { try { AU.currentTime = 0; } catch {} }
+  else if (!(await loadCard(card, uri))) return false;
+  try { await AU.play(); return true; }
+  catch { setStatus("Touche ▶ pour lancer la musique."); return false; }
 }
-async function pause() {
-  if (playMode() === "embed") { try { EmbedCtl && EmbedCtl.pause(); } catch {} return; }
-  try { await api("/me/player/pause", { method: "PUT" }); } catch {}
+function ppToggle() {
+  if (!G || auCard !== G.card || !AU.src || AU.src === SILENT) { playCurrent(); return; }
+  if (!AU.paused) { auWant = false; AU.pause(); }
+  else { auWant = true; AU.play().then(() => setStatus("")).catch(() => {}); }
 }
-async function resume() { try { await api("/me/player/play", { method: "PUT" }); } catch {} }
-
-
-async function runDiagnostic() {
-  const lines = [];
-  const add = (ok, t) => lines.push((ok ? "✅ " : "❌ ") + t);
-  const ua = navigator.userAgent;
-  lines.push("Appareil : " + (/iPhone|iPad/.test(ua) ? "iPhone/iPad" : /Android/.test(ua) ? "Android" : "autre") +
-    (window.navigator.standalone ? " (icône écran d'accueil)" : ""));
-  lines.push("Version du jeu : " + APP_VERSION);
-  lines.push("Client ID : " + clientId().slice(0, 6) + "…");
-  lines.push("Redirect URI : " + REDIRECT_URI);
-  const tok = await getToken();
-  add(!!tok, tok ? "Connecté à Spotify" : "Pas connecté (ou session expirée) → Réglages → Connexion");
-  if (!tok) return lines.join("\n");
-  const call = async (label, path, opts) => {
-    try {
-      const r = await fetch("https://api.spotify.com/v1" + path, { ...opts, headers: { Authorization: "Bearer " + tok, "Content-Type": "application/json" } });
-      let txt = ""; try { txt = await r.text(); } catch {}
-      let j = null; try { j = JSON.parse(txt); } catch {}
-      return { r, j, txt };
-    } catch (e) { return { r: { ok: false, status: "réseau" }, j: null, txt: String(e) }; }
-  };
-  const errOf = x => x.j && x.j.error ? (x.j.error.reason || x.j.error.message || "") : (x.txt || "").slice(0, 120);
-  let x = await call("me", "/me");
-  add(x.r.ok, "Compte : HTTP " + x.r.status + (x.r.ok ? (x.j && x.j.product ? " · abonnement " + x.j.product : "") : " · " + errOf(x)));
-  x = await call("devices", "/me/player/devices");
-  const devs = (x.j && x.j.devices) || [];
-  add(x.r.ok && devs.length > 0, "Appareils : HTTP " + x.r.status + " · " +
-    (devs.length ? devs.map(d => d.name + " [" + d.type + (d.is_active ? ", actif" : "") + (d.is_restricted ? ", bloqué" : "") + "]").join(", ") : (x.r.ok ? "aucun appareil visible" : errOf(x))));
-  x = await call("player", "/me/player");
-  add(x.r.ok, "Lecteur : HTTP " + x.r.status + (x.j && x.j.device ? " · " + x.j.device.name + (x.j.is_playing ? " (en lecture)" : " (en pause)") : x.r.status === 204 ? " · rien en cours" : ""));
-  x = await call("search", "/search?type=track&limit=1&q=" + encodeURIComponent("Gabriel's Oboe Morricone"));
-  const tr = x.j && x.j.tracks && x.j.tracks.items && x.j.tracks.items[0];
-  add(x.r.ok && !!tr, "Recherche : HTTP " + x.r.status + (tr ? " · trouvé " + tr.name : " · " + errOf(x)));
-  if (tr) {
-    const dev = devs.find(d => d.is_active) || devs[0];
-    x = await call("play", "/me/player/play" + (dev ? "?device_id=" + encodeURIComponent(dev.id) : ""), { method: "PUT", body: JSON.stringify({ uris: [tr.uri] }) });
-    add(x.r.ok, "Test de lecture" + (dev ? " sur " + dev.name : "") + " : HTTP " + x.r.status + (x.r.ok ? " · ça joue !" : " · " + errOf(x)));
-  }
-  return lines.join("\n");
-}
-function showDiagnostic() {
-  sheet(`<h2>Diagnostic Spotify</h2><p class="muted">Ouvre Spotify et laisse un titre jouer, puis reviens ici.</p>
-    <div class="code" id="diagout" style="white-space:pre-wrap">Test en cours…</div>
-    <button class="btn sec" id="d_copy">Copier le résultat</button>
-    <button class="btn" id="d_again">Relancer</button>
-    <button class="btn ghost" id="d_close">Fermer</button>`, {
-    d_close: closeSheet,
-    d_again: async () => { $("#diagout").textContent = "Test en cours…"; $("#diagout").textContent = await runDiagnostic(); },
-    d_copy: async () => { try { await navigator.clipboard.writeText($("#diagout").textContent); toast("Copié !"); } catch { toast("Fais une capture d'écran."); } }
-  });
-  runDiagnostic().then(t => { const el = $("#diagout"); if (el) el.textContent = t; });
-}
+function pause() { auWant = false; try { AU.pause(); } catch {} }
 
 /* ================= État du jeu ================= */
 let G = LS.get("game", null);
@@ -797,7 +654,7 @@ const YEAR_MIN = Math.min(...SONG.map(s => s.year)), YEAR_MAX = Math.max(...SONG
 const songsIn = (a, b, lvl = "moyen") => SONG.filter(s => lvl === "kids" ? s.kids
   : s.year >= a && s.year <= b && (lvl === "difficile" ? !s.series : s.level === lvl));
 // Morceaux réellement jouables ici (sans connexion, seuls ceux qui ont un identifiant)
-const playable = s => playMode() !== "embed" || isLogged() || !!knownUri(s);
+const playable = () => true; // les extraits Deezer se lisent sans compte
 function deckFor(a, b, lvl, need = 0) {
   const all = songsIn(a, b, lvl), ok = all.filter(playable);
   return (ok.length >= need ? ok : all).map(s => s.id);
@@ -862,7 +719,6 @@ function render() {
   app.innerHTML = coinify(({ home: viewHome, settings: viewSettings, options: viewOptions, setup: viewSetup, game: viewGame, win: viewWin, join: viewJoin, lobby: viewLobby })[screen]());
   ({ home: bindHome, settings: bindSettings, options: bindOptions, setup: bindSetup, game: bindGame, win: bindWin, join: bindJoin, lobby: bindLobby })[screen]();
   if (keep) { const el = document.getElementById(keep.id); if (el) { el.value = keep.v; el.focus(); try { el.setSelectionRange(keep.s, keep.s); } catch {} } }
-  showBar(playMode() === "embed" && screen === "game" && G && G.phase !== "ready" && (activeHere() || !!G.remote) && embedUsed);
   updateChatUI();
 }
 
@@ -883,7 +739,6 @@ function viewHome() {
   return `<div class="screen scroll home"><div class="hero">${body}</div></div>`;
 }
 function bindHome() {
-  $("#login") && ($("#login").onclick = login);
   $("#resume") && ($("#resume").onclick = () => go("game"));
   $("#new").onclick = () => { if (NET && !confirm("Quitter la partie à plusieurs en cours ?")) return; if (NET) leaveMulti(); go("setup"); };
   $("#joinbtn").onclick = () => { if (NET && !confirm("Quitter la partie à plusieurs en cours ?")) return; if (NET) leaveMulti(); go("join"); };
@@ -894,63 +749,40 @@ function bindHome() {
 /* ---------- Réglages ---------- */
 function viewSettings() {
   return `<div class="screen scroll">
-    <div class="top"><h2>Réglages</h2><button class="iconbtn" id="back">✕</button></div>
+    <div class="top"><h2>Réglages</h2><button class="iconbtn" id="back" aria-label="Fermer">${ic("x", "solo")}</button></div>
     <label>Thème de couleurs</label>
     <div class="themes">${THEMES.map(t => `<button data-theme-id="${t.id}" class="${curTheme() === t.id ? "on" : ""}">
       <span class="sw">${t.sw.map(c => `<i style="background:${c}"></i>`).join("")}</span>${t.name}</button>`).join("")}</div>
-    ${isAdmin() ? `<div class="row" style="justify-content:space-between;margin-top:18px"><b>🔓 Réglages avancés</b>
-      <button class="btn sec small" id="relock">🔒 Verrouiller</button></div>
-    <label>Client ID de ton app Spotify</label>
-    <input id="cid" value="${esc(clientId())}" placeholder="ex. 3f2a…" autocomplete="off" autocapitalize="off" spellcheck="false">
-    <label>Redirect URI à déclarer dans ton app Spotify (copie exacte)</label>
-    <div class="code" id="ruri">${esc(REDIRECT_URI)}</div>
-    <button class="btn sec small" id="copy" style="margin-top:8px">Copier</button>
+    ${isAdmin() ? `<div class="row" style="justify-content:space-between;margin-top:18px"><b>${ic("unlock")}Réglages avancés</b>
+      <button class="btn sec small" id="relock">${ic("lock")}Verrouiller</button></div>
+    <p class="muted">La musique vient des extraits de 30 secondes de Deezer : aucun compte n'est nécessaire.</p>
     <div class="box">
-      <div class="row" style="justify-content:space-between"><span class="pill"><span class="dot ${isLogged() ? "on" : ""}"></span>${isLogged() ? "Connecté" : "Non connecté"}</span>
-      ${isLogged() ? `<button class="btn sec small" id="logout">Déconnexion</button>` : `<button class="btn small" id="login">Connexion</button>`}</div>
+      <b>Vérifier la liste</b>
+      <p class="muted">Cherche les ${SONG.length} morceaux sur Deezer et liste ceux qui ne sont pas trouvés (quelques minutes). Pour chacun, colle le lien Deezer du bon morceau.</p>
+      <div class="muted" id="dzstat"></div>
+      <button class="btn sec" id="test">Lancer la vérification</button>
+      <div id="testout" class="test-list"></div>
     </div>
-    <button class="btn" id="diag">🩺 Diagnostic Spotify</button>
-    <p class="muted">Version du jeu : ${APP_VERSION}</p>
-    <label>Mode de lecture</label>
-    <select id="mode">
-      <option value="embed" ${playMode() === "embed" ? "selected" : ""}>Lecteur intégré au jeu (recommandé sur téléphone)</option>
-      <option value="connect" ${playMode() === "connect" ? "selected" : ""}>Appli Spotify / autre appareil (enceinte, PC, TV)</option>
-    </select>
-    <p class="muted">Lecteur intégré : la musique sort directement du jeu, sans l'appli Spotify. Selon Spotify, il peut s'agir d'extraits de 30 s.</p>
-    <label>Appareil de lecture (mode appli Spotify)</label>
-    <div class="row"><select id="dev"><option value="">Automatique (appareil actif)</option></select>
-      <button class="btn sec small" id="loaddev">↻</button></div>
-    <p class="muted">Astuce : choisis une enceinte, un ordinateur ou une TV pour que personne ne voie le titre sur l'écran Spotify.</p>
+    <div class="box">
+      <b>Exporter deezer.js</b>
+      <p class="muted">Crée le fichier <code>deezer.js</code> avec l'identifiant Deezer de chaque morceau trouvé. Dépose-le sur GitHub : tous les téléphones joueront exactement les mêmes extraits, sans chercher. Lance d'abord « Vérifier la liste ».</p>
+      <button class="btn" id="export">${ic("download")}Exporter deezer.js</button>
+    </div>
+    <div class="box">
+      <b>Playlists pour Deezer</b>
+      <p class="muted">Pour écouter les morceaux en entier dans l'appli Deezer : copie la liste d'un niveau, puis colle-la dans l'outil d'import. Il crée la playlist sur ton compte Deezer.</p>
+      <div class="lvlgrid">${["kids", "facile", "moyen", "difficile"].map(l => `<button class="btn sec" data-pl="${l}">${LEVELS[l]}<br><span style="font-weight:500;font-size:13px">${songsIn(YEAR_MIN, YEAR_MAX, l).length} morceaux</span></button>`).join("")}</div>
+      <a class="btn" href="https://www.tunemymusic.com/transfer/freetext-to-deezer" target="_blank" rel="noopener" style="text-align:center;text-decoration:none;margin-top:10px">Ouvrir l'outil d'import${ic("arrow", "after")}</a>
+    </div>
     <label>Relais pour les parties à plusieurs</label>
     <select id="broker">
       <option value="wss://broker.hivemq.com:8884/mqtt" ${BROKER().includes("hivemq") ? "selected" : ""}>Relais 1 (par défaut)</option>
       <option value="wss://broker.emqx.io:8084/mqtt" ${BROKER().includes("emqx") ? "selected" : ""}>Relais 2 (secours)</option>
     </select>
     <p class="muted">Si les téléphones n'arrivent pas à se connecter, choisissez tous le relais 2 (tous les appareils doivent utiliser le même).</p>
-    <label>Démarrer chaque morceau à</label>
-    <select id="startAt">${[0, 15, 30, 45].map(v => `<option value="${v}" ${(LS.get("startAt", 0) || 0) == v ? "selected" : ""}>${v} s</option>`).join("")}</select>
-    <div class="box">
-      <b>Vérifier la liste</b>
-      <p class="muted">Cherche les ${SONG.length} morceaux sur Spotify et liste ceux qui ne sont pas trouvés (≈ 2 à 4 minutes). Les résultats sont mémorisés, ce qui accélère les parties.</p>
-      <button class="btn sec" id="test" ${isLogged() ? "" : "disabled"}>Lancer la vérification</button>
-      <div id="testout" class="test-list"></div>
-    </div>
-    <div class="box">
-      <b>Exporter la liste (jeu sans connexion)</b>
-      <p class="muted">Crée un nouveau <code>songs.js</code> qui contient l'identifiant Spotify de chaque morceau trouvé.
-        Dépose-le sur GitHub : tout le monde pourra alors jouer <b>sans se connecter</b>, même sans Premium (extraits de 30 s).
-        Lance d'abord « Vérifier la liste ».</p>
-      <div class="muted" id="exportstat"></div>
-      <button class="btn" id="export">⬇️ Exporter songs.js</button>
-    </div>
-    <div class="box">
-      <b>Playlists Spotify</b>
-      <p class="muted">Crée sur ton compte Spotify une playlist privée par niveau (Kids, Facile, Moyen, Difficile) avec tous les morceaux du jeu. Relancer met les playlists à jour.</p>
-      <div class="muted" id="plout"></div>
-      <button class="btn" id="mkpl" ${isLogged() ? "" : "disabled"}>🎶 Créer les playlists</button>
-    </div>
-    <button class="btn ghost" id="clearcache">Vider la mémoire des morceaux trouvés</button>`
-    : `<div class="box" style="margin-top:18px"><b>🔒 Réglages avancés</b>
+    <button class="btn ghost" id="clearcache">Vider la mémoire des morceaux trouvés</button>
+    <p class="muted">Version du jeu : ${APP_VERSION}</p>`
+    : `<div class="box" style="margin-top:18px"><b>${ic("lock")}Réglages avancés</b>
       <p class="muted">Réservés à l'organisateur du jeu.</p>
       <input id="pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••"
         style="font-size:24px;letter-spacing:8px;text-align:center">
@@ -967,8 +799,9 @@ async function checkPin(pin) {
     return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, "0")).join("") === ADMIN_HASH;
   } catch { return false; }
 }
+const dzCount = () => SONG.filter(s => knownDz(s)).length;
 function bindSettings() {
-  $("#back").onclick = () => { if ($("#cid")) LS.set("clientId", $("#cid").value.trim()); go("home"); };
+  $("#back").onclick = () => go("home");
   document.querySelectorAll("[data-theme-id]").forEach(b => b.onclick = () => { LS.set("theme", b.dataset.themeId); applyTheme(b.dataset.themeId); render(); });
   if (!isAdmin()) {
     const pin = $("#pin");
@@ -982,64 +815,79 @@ function bindSettings() {
     return;
   }
   $("#relock").onclick = () => { LS.del("admin"); render(); };
-  $("#cid").onchange = e => { LS.set("clientId", e.target.value.trim()); };
-  $("#copy").onclick = async () => { try { await navigator.clipboard.writeText(REDIRECT_URI); toast("Copié !"); } catch { toast("Sélectionne et copie le texte."); } };
-  $("#login") && ($("#login").onclick = () => { LS.set("clientId", $("#cid").value.trim()); login(); });
-  $("#logout") && ($("#logout").onclick = logout);
-  $("#diag").onclick = showDiagnostic;
-  document.querySelectorAll("[data-theme-id]").forEach(b => b.onclick = () => { LS.set("theme", b.dataset.themeId); applyTheme(b.dataset.themeId); render(); });
-  { const c = LS.get("ids2", {}) || {}, n = SONG.filter(s => s.sid || c[songKey(s)]).length;
-    $("#exportstat").textContent = `${n} / ${SONG.length} morceaux ont un identifiant Spotify.`; }
-  $("#mode").onchange = e => { pause(); LS.set("mode", e.target.value); showBar(false); };
-  $("#startAt").onchange = e => LS.set("startAt", +e.target.value);
+  $("#dzstat").textContent = `${dzCount()} / ${SONG.length} morceaux ont déjà un identifiant Deezer.`;
   $("#broker").onchange = e => { LS.set("broker", e.target.value); if (NET) netStart(); toast("Relais changé."); };
-  const sel = $("#dev");
-  const pref = LS.get("device", "");
-  const savedName = LS.get("deviceName", "");
-  if (pref) sel.insertAdjacentHTML("beforeend", `<option value="${esc(pref)}" selected>${esc(savedName || "Appareil choisi")}</option>`);
-  sel.onchange = () => { LS.set("device", sel.value); LS.set("deviceName", sel.options[sel.selectedIndex].text); };
-  $("#loaddev").onclick = async () => {
-    try {
-      const r = await api("/me/player/devices"); const devs = (await r.json()).devices || [];
-      sel.innerHTML = `<option value="">Automatique (appareil actif)</option>` +
-        devs.map(d => `<option value="${esc(d.id)}" ${d.id === pref ? "selected" : ""}>${esc(d.name)} (${esc(d.type)})</option>`).join("");
-      toast(devs.length ? devs.length + " appareil(s) trouvé(s)" : "Aucun appareil : ouvre Spotify sur l'appareil voulu.");
-    } catch (e) { toast(e instanceof AuthError ? "Connecte-toi d'abord à Spotify." : "Erreur Spotify."); }
-  };
-  $("#clearcache").onclick = () => { LS.del("ids2"); toast("Mémoire vidée."); };
-  $("#export").onclick = exportSongs;
-  $("#mkpl").onclick = makePlaylists;
-  $("#testout").onclick = e => {
+  $("#clearcache").onclick = () => { LS.del("dz"); previewCache.clear(); toast("Mémoire vidée."); render(); };
+  $("#export").onclick = exportDeezer;
+  document.querySelectorAll("[data-pl]").forEach(b => b.onclick = () => copyPlaylist(b.dataset.pl));
+  // Correction à la main : lien Deezer collé sous un morceau introuvable
+  $("#testout").onclick = async e => {
     const b = e.target.closest(".fixrow button"); if (!b) return;
-    const row = b.closest(".miss"), inp = row.querySelector("input"), m = String(inp.value).match(/track[/:]([A-Za-z0-9]{22})/) || String(inp.value).trim().match(/^([A-Za-z0-9]{22})$/);
-    if (!m) { toast("Lien non reconnu : il doit ressembler à open.spotify.com/track/…"); return; }
-    const sg = SONG[+row.dataset.id], c = LS.get("ids2", {}) || {};
-    c[songKey(sg)] = "spotify:track:" + m[1]; LS.set("ids2", c);
-    row.innerHTML = `✅ <b>${esc(sg.film)}</b> — ${esc(sg.track)} : lien enregistré`;
-    toast("Enregistré. Exporte songs.js pour l'ajouter pour tout le monde.");
+    const row = b.closest(".miss"), inp = row.querySelector("input");
+    const m = String(inp.value).match(/track\/(\d+)/) || String(inp.value).trim().match(/^(\d{3,})$/);
+    if (!m) {
+      if (/link\.deezer\.com|deezer\.page\.link/.test(inp.value)) toast("Ouvre d'abord ce lien court dans le navigateur, puis copie l'adresse deezer.com/…/track/… qui s'affiche.", 5000);
+      else toast("Lien non reconnu : il doit ressembler à deezer.com/track/123456");
+      return;
+    }
+    const sg = SONG[+row.dataset.id], c = LS.get("dz", {}) || {};
+    c[songKey(sg)] = m[1]; LS.set("dz", c);
+    row.innerHTML = `${ic("check", "gold")}<b>${esc(sg.film)}</b> — ${esc(sg.track)} : lien enregistré`;
+    $("#dzstat").textContent = `${dzCount()} / ${SONG.length} morceaux ont déjà un identifiant Deezer.`;
+    toast("Enregistré. Exporte deezer.js pour l'ajouter pour tout le monde.");
   };
   $("#test").onclick = async () => {
     const out = $("#testout"), btn = $("#test"); btn.disabled = true; out.innerHTML = "";
     let ko = 0, n = 0, next = 0, stop = false;
-    const list = SONG.filter(x => !knownUri(x)); // les morceaux déjà trouvés ne sont pas recherchés à nouveau
+    const list = SONG.filter(x => !knownDz(x)); // les morceaux déjà trouvés ne sont pas recherchés à nouveau
     btn.textContent = `Vérification… 0/${list.length}`;
     const worker = async () => {
       while (next < list.length && !stop) {
         const s = list[next++];
         try {
-          const uri = await resolveSong(s);
-          if (!uri) { ko++; out.insertAdjacentHTML("beforeend", `<div class="miss" data-id="${s.id}">❌ <b>${esc(s.film)}</b> — ${esc(s.track)} (${esc(s.composer)})
-            <div class="fixrow"><input placeholder="Colle ici le lien Spotify du morceau" autocomplete="off"><button class="btn small">OK</button></div></div>`); }
-        } catch (e) { if (e instanceof AuthError) { stop = true; toast("Session Spotify expirée."); } }
+          const id = await searchDz(s);
+          if (!id) { ko++; out.insertAdjacentHTML("beforeend", `<div class="miss" data-id="${s.id}">${ic("x")}<b>${esc(s.film)}</b> — ${esc(s.track)} (${esc(s.composer)})
+            <div class="fixrow"><input placeholder="Colle ici le lien Deezer du morceau" autocomplete="off"><button class="btn small">OK</button></div></div>`); }
+        } catch { stop = true; toast("Impossible de joindre Deezer : vérifie la connexion internet."); }
         btn.textContent = `Vérification… ${++n}/${list.length}`;
       }
     };
-    await Promise.all([worker(), worker(), worker(), worker()]);
+    await Promise.all([worker(), worker()]);
     btn.disabled = false; btn.textContent = "Relancer la vérification";
-    out.insertAdjacentHTML("afterbegin", `<div><b>${ko ? ko + " morceau(x) introuvable(s)" : "Tous les morceaux ont été trouvés ✓"}</b>${ko ? `<br><span class="muted">Dans Spotify : Partager → Copier le lien du titre, puis colle-le sous le morceau. Pense ensuite à exporter songs.js.</span>` : ""}</div>`);
+    $("#dzstat").textContent = `${dzCount()} / ${SONG.length} morceaux ont déjà un identifiant Deezer.`;
+    out.insertAdjacentHTML("afterbegin", `<div><b>${ko ? ko + " morceau(x) introuvable(s)" : "Tous les morceaux ont été trouvés"}</b>${ko ? `<br><span class="muted">Dans Deezer : Partager → Copier le lien du titre, puis colle-le sous le morceau. Pense ensuite à exporter deezer.js.</span>` : ""}</div>`);
   };
 }
-
+// deezer.js : { "titreOriginal|morceau": "identifiant Deezer" } — ne touche pas à songs.js
+function exportDeezer() {
+  const map = {}; SONG.forEach(s => { const id = knownDz(s); if (id) map[songKey(s)] = String(id); });
+  const n = Object.keys(map).length;
+  const txt = `// Identifiants Deezer des morceaux du jeu (exporté depuis Réglages → Exporter deezer.js).
+// Clé : "titre original|morceau" (comme dans levels.js). Valeur : identifiant du titre Deezer
+// (lien https://www.deezer.com/track/123456 -> "123456"). Pour corriger un morceau, remplace son identifiant.
+const DEEZER = {
+${Object.entries(map).map(([k, v]) => "  " + JSON.stringify(k) + ": " + JSON.stringify(v) + ",").join("\n")}
+};
+`;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([txt], { type: "text/javascript" })); a.download = "deezer.js";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast(`deezer.js exporté : ${n} / ${SONG.length} morceaux avec identifiant.` + (n < SONG.length ? " Les autres seront cherchés pendant la partie." : ""), 4500);
+}
+// Liste d'un niveau au format « Titre - Artiste », une ligne par morceau (accepté par l'outil d'import)
+async function copyPlaylist(lvl) {
+  const lines = songsIn(YEAR_MIN, YEAR_MAX, lvl).slice().sort((a, b) => a.year - b.year)
+    .map(s => `${s.track.replace(/\s*\((VF|VO)\)\s*/gi, " ").trim()} - ${s.composer}`);
+  const txt = [...new Set(lines)].join("\n");
+  try { await navigator.clipboard.writeText(txt); toast(`Liste ${LEVELS[lvl]} copiée (${lines.length} morceaux). Colle-la dans l'outil d'import, nomme la playlist « Hitster films & séries · ${LEVELS[lvl]} ».`, 6000); }
+  catch {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([txt], { type: "text/plain" })); a.download = `hitster-${lvl}.txt`;
+    document.body.appendChild(a); a.click(); a.remove();
+    toast("Liste téléchargée : ouvre le fichier, copie tout et colle-le dans l'outil d'import.", 6000);
+  }
+}
 
 /* ---------- Options de partie ---------- */
 let optBack = "home";
@@ -1047,14 +895,14 @@ function viewOptions() {
   const lvl = opt().level;
   const cnt = l => songsIn(YEAR_MIN, YEAR_MAX, l).length;
   return `<div class="screen prep">
-    <div class="top"><h2><svg class="ico big" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></g><g fill="currentColor" stroke="var(--card)" stroke-width="1.5"><circle cx="9" cy="6" r="2.6"/><circle cx="15" cy="12" r="2.6"/><circle cx="7" cy="18" r="2.6"/></g></svg> Options de partie</h2><button class="iconbtn" id="back">✕</button></div>
+    <div class="top"><h2><svg class="ico big" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></g><g fill="currentColor" stroke="var(--card)" stroke-width="1.5"><circle cx="9" cy="6" r="2.6"/><circle cx="15" cy="12" r="2.6"/><circle cx="7" cy="18" r="2.6"/></g></svg> Options de partie</h2><button class="iconbtn" id="back" aria-label="Fermer">${ic("x", "solo")}</button></div>
     <div class="content">
     <label>Niveau</label>
     <div class="lvlgrid">
-      <button class="btn ${lvl === "kids" ? "" : "sec"}" data-lvl="kids">🧸 Kids<br><span style="font-weight:500;font-size:13px">${cnt("kids")} musiques</span></button>
-      <button class="btn ${lvl === "facile" ? "" : "sec"}" data-lvl="facile">😀 Facile<br><span style="font-weight:500;font-size:13px">${cnt("facile")} musiques</span></button>
-      <button class="btn ${lvl === "moyen" ? "" : "sec"}" data-lvl="moyen">🤔 Moyen<br><span style="font-weight:500;font-size:13px">${cnt("moyen")} musiques</span></button>
-      <button class="btn ${lvl === "difficile" ? "" : "sec"}" data-lvl="difficile">🔥 Difficile<br><span style="font-weight:500;font-size:13px">${cnt("difficile")} musiques</span></button>
+      <button class="btn ${lvl === "kids" ? "" : "sec"}" data-lvl="kids">${ic("smile")}Kids<br><span style="font-weight:500;font-size:13px">${cnt("kids")} musiques</span></button>
+      <button class="btn ${lvl === "facile" ? "" : "sec"}" data-lvl="facile">${ic("lvl1")}Facile<br><span style="font-weight:500;font-size:13px">${cnt("facile")} musiques</span></button>
+      <button class="btn ${lvl === "moyen" ? "" : "sec"}" data-lvl="moyen">${ic("lvl2")}Moyen<br><span style="font-weight:500;font-size:13px">${cnt("moyen")} musiques</span></button>
+      <button class="btn ${lvl === "difficile" ? "" : "sec"}" data-lvl="difficile">${ic("lvl3")}Difficile<br><span style="font-weight:500;font-size:13px">${cnt("difficile")} musiques</span></button>
     </div>
     <p class="muted">${({
       kids: "Kids : dès 6 ans. Dessins animés et chansons Disney en français. On devine juste le titre.",
@@ -1114,12 +962,12 @@ let setupMulti = LS.get("multi", false);
 function viewSetup() {
   const nSel = +($("#teams") && $("#teams").value) || LS.get("teams", 2), teamNames = LS.get("teamNames", []), kidsSel = opt().level === "kids";
   return `<div class="screen prep">
-    <div class="top"><h2>Nouvelle partie</h2><button class="iconbtn" id="back">✕</button></div>
+    <div class="top"><h2>Nouvelle partie</h2><button class="iconbtn" id="back" aria-label="Fermer">${ic("x", "solo")}</button></div>
     <div class="content">
     <label>Mode de jeu</label>
     <div class="row lvlrow">
-      <button class="btn ${setupMulti ? "sec" : ""}" data-m="0">📱 Un seul téléphone</button>
-      <button class="btn ${setupMulti ? "" : "sec"}" data-m="1">📱📱 Un téléphone par équipe</button>
+      <button class="btn ${setupMulti ? "sec" : ""}" data-m="0">${ic("phone")}Un seul téléphone</button>
+      <button class="btn ${setupMulti ? "" : "sec"}" data-m="1">${ic("phones")}Un téléphone par équipe</button>
     </div>
     ${setupMulti
       ? `<p class="muted">Tu crées la partie et tu es l'<b>Équipe 1</b>. Les autres équipes la rejoignent depuis leur téléphone avec le code à 5 chiffres qui va s'afficher (accueil → « Rejoindre une partie »).</p>`
@@ -1169,7 +1017,6 @@ function bindSetup() {
   $("#start").onclick = () => {
     const target = +$("#target").value, tokens = $("#tokens") ? +$("#tokens").value : 0, { yMin, yMax, level } = opt();
     LS.set("target", target); if ($("#tokens")) LS.set("tokens", tokens);
-    if (!allReady() && !isLogged()) toast("Pense à te connecter à Spotify pour entendre la musique.");
     statusMsg = "";
     if (setupMulti) { createMulti({ target, tokens, yMin, yMax, level }); return; }
     const teams = +$("#teams").value; LS.set("teams", teams);
@@ -1288,7 +1135,7 @@ function leaveMulti(msg) {
     const old = mqs; mqs = []; clearInterval(joinTimer); joinTimer = null;
     setTimeout(() => old.forEach(c => { try { c.end(true); } catch {} }), 600);
   }
-  pause(); showBar(false); closeSheet();
+  pause(); closeSheet();
   NET = null; LOBBY = null; netOnline = false; LS.del("net"); LS.del("lobby");
   G = LS.get("game", null); if (G && G.multi) { G = null; LS.del("game"); }
   pickTeam = null; if (msg) toast(msg, 4000);
@@ -1412,7 +1259,7 @@ $("#chform").onsubmit = e => { e.preventDefault(); const i = $("#chmsg"); sendCh
 /* ---------- Écrans « Rejoindre » et salle d'attente ---------- */
 function viewJoin() {
   return `<div class="screen">
-    <div class="top"><h2>Rejoindre une partie</h2><button class="iconbtn" id="back">✕</button></div>
+    <div class="top"><h2>Rejoindre une partie</h2><button class="iconbtn" id="back" aria-label="Fermer">${ic("x", "solo")}</button></div>
     <div class="content">
       <label>Code de la partie</label>
       <input id="code" inputmode="numeric" pattern="[0-9]*" maxlength="5" autocomplete="off" placeholder="•••••"
@@ -1432,7 +1279,7 @@ function bindJoin() {
 function viewLobby() {
   const host = isHost(), teams = lobbyTeams(), me = myTeam();
   return `<div class="screen prep">
-    <div class="top"><h2>${host ? "Partie à plusieurs" : "Salle d'attente"}</h2><button class="iconbtn" id="back">✕</button></div>
+    <div class="top"><h2>${host ? "Partie à plusieurs" : "Salle d'attente"}</h2><button class="iconbtn" id="back" aria-label="Fermer">${ic("x", "solo")}</button></div>
     <div class="content">
       <div class="box" style="text-align:center">
         <div class="muted">Code de la partie</div>
@@ -1446,7 +1293,7 @@ function viewLobby() {
           <span><b>On joue à distance</b><br><span class="muted">${LOBBY.opts.remote ? "La musique est diffusée sur tous les téléphones." : "Tous dans la même pièce : seul le téléphone de l'équipe en jeu diffuse la musique."}</span></span></label>`
         : LOBBY ? `<p class="muted" style="text-align:center">${LOBBY.opts && LOBBY.opts.remote ? "Partie à distance : la musique sera diffusée sur ton téléphone." : "Partie en présence : la musique sort du téléphone de l'équipe en jeu."}</p>` : ""}
       <label>Équipes connectées (${teams.length})</label>
-      ${teams.map(t => `<div class="score"><b>${esc(t.name)}</b><span class="muted">${t.me ? "ce téléphone" : t.team === 0 ? "créateur" : "✓ connectée"}</span></div>`).join("") || `<p class="muted">—</p>`}
+      ${teams.map(t => `<div class="score"><b>${esc(t.name)}</b><span class="muted">${t.me ? "ce téléphone" : t.team === 0 ? "créateur" : ic("check") + "connectée"}</span></div>`).join("") || `<p class="muted">—</p>`}
       <p class="muted" style="margin-top:12px"><span class="netdot ${netOnline ? "on" : ""}"></span> ${netOnline ? "Connecté au relais" : "Connexion au relais…"}</p>
     </div>
     <div class="footer">${host
@@ -1578,13 +1425,13 @@ function afterChange(prev) {
 }
 function postState(prev) {
   ensureG();
-  if (G.winner != null) { pause(); showBar(false); }
+  if (G.winner != null) pause();
   const newCard = !prev || prev.card !== G.card;
   if (newCard) {
     pickTeam = null; tlScroll = 0; statusMsg = "";
     if (prev) pause();
     if (prev && G.winner == null && (prev.turn !== G.turn)) {
-      toast(G.multi && myTeam() === G.turn ? "🎧 C'est au tour de ton équipe !" : "À " + cur().name + " de jouer !");
+      toast(G.multi && myTeam() === G.turn ? "C'est au tour de ton équipe !" : "À " + cur().name + " de jouer !");
       if (G.multi && myTeam() === G.turn && navigator.vibrate) navigator.vibrate([60, 60, 60]);
     }
   }
@@ -1596,13 +1443,12 @@ function postState(prev) {
   // Nouvelle carte ou réponse validée ailleurs : la fenêtre de réponse ouverte n'a plus lieu d'être
   if (pendGap != null && (newCard || !activeHere() || !["listen", "vote"].includes(G.phase))) { sheetOnClose = null; pendGap = null; closeSheet(); }
   armVoteTimer();
-  if (newCard) needTap(false);
   if (G.multi && G.phase === "vote" && activeHere() && prev && prev.phase === "vote" && allDecided() &&
       !G.players.every((pl, i) => i === prev.turn || (prev.chals || []).some(c => c.team === i) || (prev.passes || []).includes(i))) {
     toast("Toutes les équipes ont décidé : tu peux voir la réponse"); if (navigator.vibrate) navigator.vibrate(60);
   }
   if (G.multi && !G.curUri && G.card != null && G.phase !== "revealed") shareUri();
-  ensureEmbedTrack();
+  ensureTrack();
   if (["home", "lobby", "join", "setup"].includes(screen)) screen = "game";
   render();
   if (newCard && wantPlayNext) { wantPlayNext = false; if (activeHere()) playCurrent(); }
@@ -1794,7 +1640,6 @@ function shareUri() {
   if (sharingCard === c) return;
   const known = knownUri(s);
   if (known) { sharingCard = c; dispatch({ t: "uri", card: c, uri: known }); return; }
-  if (!isLogged()) return;
   sharingCard = c;
   resolveSong(s).then(u => { if (u && G && G.card === c && !G.curUri) dispatch({ t: "uri", card: c, uri: u }); }).catch(() => {});
 }
@@ -1811,7 +1656,6 @@ function gapLabel(cards, i) {
 }
 
 // Un seul espace d'information en haut : consigne en cours, sinon message d'erreur, sinon tour de jeu
-const EDIT_ICO = `<svg class="gedit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>`;
 function ctxBar(instr, turn) {
   const msg = instr || (statusMsg ? esc(statusMsg) : "") || turn;
   return msg ? `<div class="turnbar">${msg}</div>` : "";
@@ -1826,14 +1670,12 @@ function viewGame() {
   const freeGap = 1 + chals.length < cards.length + 1;
   const canVoteTeam = i => i !== G.turn && (G.players[i].tokens || 0) > 0 && !chals.some(c => c.team === i) && freeGap;
   const hearsHere = active || !!G.remote;
-  const slot = playMode() === "embed" && hearsHere && ph !== "ready" ? ppHtml() : "";
-  const ctrl = playMode() === "embed"
-    ? `<div class="ctrl"><button id="replay">${active ? "↺ Réécouter" : "▶ Écouter"}</button></div>`
-    : `<div class="ctrl"><button id="replay">${active ? "↺ Réécouter" : "▶ Écouter"}</button><button id="pause">⏸ Pause</button>${active ? `<button id="devbtn">🔊 Appareil</button>` : ""}</div>`;
+  const slot = hearsHere && ph !== "ready" ? ppHtml() : "";
+  const ctrl = `<div class="ctrl"><button id="replay">${active ? ic("replay") + "Réécouter" : ic("play") + "Écouter"}</button></div>`;
   let mystery;
   if (ph === "ready") {
     mystery = active
-      ? `<div class="mystery bottom"><div class="readyrow"><button class="bigplay" id="play" aria-label="Lecture">▶</button>
+      ? `<div class="mystery bottom"><div class="readyrow"><button class="bigplay" id="play" aria-label="Lecture">${ic("play", "solo fill")}</button>
           <div><b>Nouvelle carte mystère</b><div class="muted">Appuie sur lecture</div></div></div></div>`
       : `<div class="mystery bottom"><div class="muted" style="text-align:center">${esc(p.name)} va lancer la musique…</div></div>`;
   } else if (!rev) {
@@ -1849,10 +1691,8 @@ function viewGame() {
   for (let i = 0; i <= cards.length; i++) {
     if (!rev) {
       const ch = chals.find(c => c.gap === i), mineP = pickTeam != null && pickGap === i;
-      const back = ph === "vote" && G.gap === i && active && pickTeam == null && pendGap == null;
-      tl += `<button class="gap ${selGap === i ? "sel" : ""} ${(ch && selGap !== i) || mineP ? "chal" : ""} ${back ? "back" : ""}" data-g="${i}" ${canTap ? "" : "disabled"}
-        ${back ? `aria-label="Modifier ma réponse"` : ""}>${
-        selGap === i ? "🎧 " : ch ? "⚔️ " + esc(G.players[ch.team].name) + " · " : mineP ? "⚔️ Ton vote · " : ""}${gapLabel(cards, i)}${back ? EDIT_ICO : ""}</button>`;
+      tl += `<button class="gap ${selGap === i ? "sel" : ""} ${(ch && selGap !== i) || mineP ? "chal" : ""}" data-g="${i}" ${canTap ? "" : "disabled"}>${
+        selGap === i ? ic("headphones") : ch ? ic("swords") + esc(G.players[ch.team].name) + " · " : mineP ? ic("swords") + "Ton vote · " : ""}${gapLabel(cards, i)}</button>`;
     }
     if (i < cards.length) {
       const c = cards[i];
@@ -1864,7 +1704,7 @@ function viewGame() {
     const disp = G.result.ok ? cards : [...cards, { ...s, ghost: true }].sort((a, b) => a.year - b.year);
     tl = disp.map(c => {
       const hl = c.id === G.card, cls = hl ? (G.result.ok ? "new" : "lost") : "";
-      const lab = c.ghost ? `<span class="lostlab">${G.result.wonBy != null ? "→ remportée par " + esc(G.players[G.result.wonBy].name) : "défaussée"}</span>` : "";
+      const lab = c.ghost ? `<span class="lostlab">${G.result.wonBy != null ? ic("arrow") + "remportée par " + esc(G.players[G.result.wonBy].name) : "défaussée"}</span>` : "";
       return `<div class="tcard ${cls}" ${hl ? `id="hlcard" role="button" title="Revoir les résultats"` : ""} style="margin-top:8px"><div class="y">${c.year}</div>
         <div class="t"><b>${esc(c.film)}</b><span>${hl ? "« " + esc(c.track) + " » · " : ""}${esc(c.composer)}</span>${lab}</div></div>`;
     }).join("");
@@ -1873,37 +1713,39 @@ function viewGame() {
   if (rev) {
     actions = active
       ? `<button class="btn ${G.bonus ? "" : "sec"}" id="bonus" style="font-size:15px;padding:12px">${G.bonus
-          ? `✓ Bonus +1 🪙 pour ${esc(p.name)} (toucher pour annuler)` : "🪙 Corriger : film et compositeur trouvés (+1)"}</button>
-        <button class="btn" id="next">Passer à ${esc(G.players[(G.turn + 1) % G.players.length].name)} →</button>`
+          ? `${ic("check")}Bonus +1 🪙 pour ${esc(p.name)} (toucher pour annuler)` : "🪙 Corriger : film et compositeur trouvés (+1)"}</button>
+        <button class="btn" id="next">Passer à ${esc(G.players[(G.turn + 1) % G.players.length].name)}${ic("arrow", "after")}</button>`
       : `<button class="btn sec" disabled>En attente de ${esc(p.name)}…</button>`;
   } else if (ph === "vote") {
     const nv = chals.length;
-    hint = `🔒 Réponse de ${esc(p.name)} verrouillée · ⚔️ ${nv ? nv + " vote" + (nv > 1 ? "s" : "") : "aucun vote pour l'instant"}`;
-    if (multi) hint = allDecided() ? `✓ Toutes les équipes ont décidé${active ? " : tu peux voir la réponse" : ""}`
-      : `🔒 ${G.players.map((pl, i) => i === G.turn ? "" : `${esc(pl.name)} : ${chals.some(c => c.team === i) ? "⚔️ vote" : (G.passes || []).includes(i) ? "passe" : "…"}`).filter(Boolean).join(" · ")}`;
+    hint = `${ic("lock")}Réponse de ${esc(p.name)} verrouillée · ${nv ? nv + " vote" + (nv > 1 ? "s" : "") : "aucun vote pour l'instant"}`;
+    if (multi) hint = allDecided() ? `${ic("check")}Toutes les équipes ont décidé${active ? " : tu peux voir la réponse" : ""}`
+      : `${ic("lock")}${G.players.map((pl, i) => i === G.turn ? "" : `${esc(pl.name)} : ${chals.some(c => c.team === i) ? "vote" : (G.passes || []).includes(i) ? "passe" : "…"}`).filter(Boolean).join(" · ")}`;
     const left = voteLeft();
     if (pickTeam != null && multi) {
       actions = `<div class="row eq"><button class="btn sec" id="votecancel">Annuler</button>
         ${ringBtn(`<button class="btn" id="voteok" ${pickGap == null ? "disabled" : ""}>Valider mon vote</button>`, left, pickDur)}</div>`;
-      hint = pickGap == null ? `⚔️ Touche une case libre (1 🪙)` : `⚔️ Ton vote : <b>${esc(gapLabel(cards, pickGap))}</b>`;
+      hint = pickGap == null ? `${ic("swords")}Touche une case libre (1 🪙)` : `${ic("swords")}Ton vote : <b>${esc(gapLabel(cards, pickGap))}</b>`;
     } else if (pickTeam != null) {
       actions = `<button class="btn sec" id="votecancel">Annuler</button>`;
-      hint = `⚔️ <b>${esc(G.players[pickTeam].name)}</b> : touche une case libre (1 🪙)`;
+      hint = `${ic("swords")}<b>${esc(G.players[pickTeam].name)}</b> : touche une case libre (1 🪙)`;
     } else if (!multi) {
       const any = G.players.some((_, i) => canVoteTeam(i));
-      actions = `<div class="row">${any ? `<button class="btn sec" id="vote" style="flex:0 0 42%">⚔️ Voter</button>` : ""}
+      actions = `<div class="row">${any ? `<button class="btn sec" id="vote" style="flex:0 0 42%">${ic("swords")}Voter</button>` : ""}
         <button class="btn" id="reveal">Voir la réponse</button></div>`;
     } else if (active) {
       // À plusieurs, la réponse ne se dévoile qu'une fois que toutes les équipes ont voté ou passé
-      actions = `<button class="btn" id="reveal" ${G.voteClosed ? "" : "disabled"}>Voir la réponse</button>`;
+      // L'anneau montre le temps qu'il reste à l'équipe qui vote : on voit pourquoi le bouton attend
+      const vc = G.voteCur, vLeft = !G.voteClosed && vc != null ? voteLeft(vc) : null;
+      actions = ringBtn(`<button class="btn" id="reveal" ${G.voteClosed ? "" : "disabled"}>Voir la réponse</button>`, vLeft, VOTE_MS * (G.voteExt && G.voteExt[vc] ? 2 : 1));
     } else {
       const myVote = chals.find(c => c.team === me), passed = (G.passes || []).includes(me);
       const open = left != null && left > 0, waiting = seqVote() && !G.voteClosed && G.voteCur != null && G.voteCur !== me;
-      if (myVote) actions = `<button class="btn sec" disabled>⚔️ Vote enregistré : ${esc(gapLabel(cards, myVote.gap))}</button>`;
-      else if (passed) actions = `<button class="btn sec" disabled>✓ Tu as passé ton tour de vote</button>`;
-      else if (waiting) actions = `<button class="btn sec" disabled>⏳ Vote en cours : ${esc(G.players[G.voteCur].name)}</button>`;
+      if (myVote) actions = `<button class="btn sec" disabled>${ic("swords")}Vote enregistré : ${esc(gapLabel(cards, myVote.gap))}</button>`;
+      else if (passed) actions = `<button class="btn sec" disabled>${ic("check")}Tu as passé ton tour de vote</button>`;
+      else if (waiting) actions = `<button class="btn sec" disabled>${ic("hourglass")}Vote en cours : ${esc(G.players[G.voteCur].name)}</button>`;
       else if (!open) actions = `<button class="btn sec" disabled>Votes terminés</button>`;
-      else actions = `<div class="row eq">${ringBtn(`<button class="btn" id="vote" ${canVoteTeam(me) ? "" : "disabled"}>⚔️ Voter (${mine.tokens || 0} 🪙)</button>`, canVoteTeam(me) ? left : null)}
+      else actions = `<div class="row eq">${ringBtn(`<button class="btn" id="vote" ${canVoteTeam(me) ? "" : "disabled"}>${ic("swords")}Voter (${mine.tokens || 0} 🪙)</button>`, canVoteTeam(me) ? left : null)}
         <button class="btn sec" id="pass">Passer</button></div>`;
     }
   } else if (active) {
@@ -1912,13 +1754,13 @@ function viewGame() {
     actions = `<button class="btn sec" disabled>${ph === "ready" ? "En attente de la musique…" : "En attente de la réponse de " + esc(p.name) + "…"}</button>`;
   }
   return `<div class="screen game">
-    <div class="top"><div><div class="row" style="gap:10px"><button class="teambadge" id="teams" title="Voir toutes les équipes">${esc(mine.name)} ▾</button>
+    <div class="top"><div><div class="row" style="gap:10px"><button class="teambadge" id="teams" title="Voir toutes les équipes">${esc(mine.name)}${ic("chev", "after")}</button>
         <span class="mytok">${mine.tokens || 0} 🪙</span></div>
       <div class="stats" style="margin-top:6px">${mine.cards.length}/${G.target} cartes${multi && !netOnline ? ` · <span class="netdot"></span> reconnexion…` : ""}</div></div>
-      <button class="iconbtn" id="menu" aria-label="Menu">☰</button></div>
+      <button class="iconbtn" id="menu" aria-label="Menu">${ic("menu", "solo")}</button></div>
     ${ctxBar(pickTeam != null ? hint : multi && ph === "vote" && !G.voteClosed && G.voteCur != null
-        ? (G.voteCur === me ? "⚔️ À ton tour de voter" : `⚔️ Vote de <b>${esc(G.players[G.voteCur].name)}</b>…`) : "",
-      multi && !active ? `🎧 Au tour de <b>${esc(p.name)}</b>` : "")}
+        ? (G.voteCur === me ? ic("swords") + "À ton tour de voter" : `${ic("swords")}Vote de <b>${esc(G.players[G.voteCur].name)}</b>…`) : "",
+      multi && !active ? `${ic("headphones")}Au tour de <b>${esc(p.name)}</b>` : "")}
     <div class="tlwrap" style="margin-top:8px"><div class="fade-top"></div><div class="timeline" id="tl">${tl}</div><div class="fade-bot"></div></div>
     ${mystery}
     ${actions}
@@ -1928,13 +1770,12 @@ function viewGame() {
 function viewKids() {
   const p = cur(), s = SONG[G.card], ph = G.phase, multi = !!G.multi, me = myTeam(), active = activeHere();
   const mine = multi && me != null ? G.players[me] : p;
-  const hears = active || !!G.remote, emb = playMode() === "embed";
-  const pp = emb && hears && ph !== "ready" ? ppHtml() : "";
-  const ctrl = emb ? `<div class="ctrl"><button id="replay">${active ? "↺ Réécouter" : "▶ Écouter"}</button></div>`
-    : `<div class="ctrl"><button id="replay">↺ Réécouter</button><button id="pause">⏸ Pause</button></div>`;
+  const hears = active || !!G.remote;
+  const pp = hears && ph !== "ready" ? ppHtml() : "";
+  const ctrl = `<div class="ctrl"><button id="replay">${active ? ic("replay") + "Réécouter" : ic("play") + "Écouter"}</button></div>`;
   let card;
   if (ph === "ready") card = active
-    ? `<div class="mystery bottom"><div class="readyrow"><button class="bigplay" id="play" aria-label="Lecture">▶</button>
+    ? `<div class="mystery bottom"><div class="readyrow"><button class="bigplay" id="play" aria-label="Lecture">${ic("play", "solo fill")}</button>
         <div><b>Écoute bien !</b><div class="muted">Appuie sur lecture</div></div></div></div>`
     : `<div class="mystery bottom"><div class="muted" style="text-align:center">${esc(p.name)} va lancer la musique…</div></div>`;
   else if (ph === "listen") card = `<div class="mystery bottom" id="playzone"><div class="playrow">${pp}${hears ? ctrl : `<div class="muted">${esc(p.name)} écoute…</div>`}</div></div>`;
@@ -1944,19 +1785,19 @@ function viewKids() {
       <div class="kidsans">${esc(s.film)}</div><div class="track muted">« ${esc(s.track)} »</div>
       ${pp ? `<div class="playrow" style="justify-content:center;margin-top:8px">${pp}</div>` : ""}</div>`;
   }
-  const found = p.cards.map(id => `<div class="kfound">⭐ ${esc(SONG[id].film)}</div>`).reverse().join("");
-  const middle = found || `<div class="kempty"><div style="font-size:54px">🎵</div><div>Écoute la musique et devine<br><b>le film, le dessin animé ou la série !</b></div></div>`;
+  const found = p.cards.map(id => `<div class="kfound">${ic("star", "gold")}${esc(SONG[id].film)}</div>`).reverse().join("");
+  const middle = found || `<div class="kempty">${ic("music", "big")}<div>Écoute la musique et devine<br><b>le film, le dessin animé ou la série !</b></div></div>`;
   let actions;
   if (!active) actions = `<button class="btn sec" disabled>${ph === "revealed" ? "En attente de " + esc(p.name) + "…" : esc(p.name) + " joue…"}</button>`;
   else if (ph === "ready") actions = "";
   else if (ph === "listen") actions = `<button class="btn" id="kreveal">Voir la réponse</button>`;
-  else if (G.result.judged == null) actions = `<div class="row"><button class="btn sec" id="kko" style="flex:1">✗ Raté</button><button class="btn" id="kok" style="flex:1">✓ Trouvé !</button></div>`;
-  else actions = `<button class="btn" id="next">Passer à ${esc(G.players[(G.turn + 1) % G.players.length].name)} →</button>`;
+  else if (G.result.judged == null) actions = `<div class="row"><button class="btn sec" id="kko" style="flex:1">${ic("x")}Raté</button><button class="btn" id="kok" style="flex:1">${ic("check")}Trouvé !</button></div>`;
+  else actions = `<button class="btn" id="next">Passer à ${esc(G.players[(G.turn + 1) % G.players.length].name)}${ic("arrow", "after")}</button>`;
   return `<div class="screen game">
-    <div class="top"><div><button class="teambadge" id="teams" title="Voir toutes les équipes">${esc(mine.name)} ▾</button>
-      <div class="stats" style="margin-top:6px">⭐ ${mine.cards.length}/${G.target} bonnes réponses${multi && !netOnline ? ` · <span class="netdot"></span> reconnexion…` : ""}</div></div>
-      <button class="iconbtn" id="menu" aria-label="Menu">☰</button></div>
-    ${ctxBar("", multi && !active ? `🎧 Au tour de <b>${esc(p.name)}</b>` : "")}
+    <div class="top"><div><button class="teambadge" id="teams" title="Voir toutes les équipes">${esc(mine.name)}${ic("chev", "after")}</button>
+      <div class="stats" style="margin-top:6px">${ic("star", "gold")}${mine.cards.length}/${G.target} bonnes réponses${multi && !netOnline ? ` · <span class="netdot"></span> reconnexion…` : ""}</div></div>
+      <button class="iconbtn" id="menu" aria-label="Menu">${ic("menu", "solo")}</button></div>
+    ${ctxBar("", multi && !active ? `${ic("headphones")}Au tour de <b>${esc(p.name)}</b>` : "")}
     <div class="tlwrap" style="margin-top:8px"><div class="timeline" id="tl">${middle}</div></div>
     ${card}
     ${actions}
@@ -1986,8 +1827,8 @@ function openAnswer(i) {
   sheet(`<h2>${same ? "Modifier ta réponse" : voting ? "Changer de réponse" : "Ta réponse"}</h2>
     <p class="muted">Période choisie : <b style="color:var(--gold)">${esc(gapLabel(cards, i))}</b><br>
       Propose le film et le compositeur. Si les deux sont justes, gagne 1 🪙 de vote.${voting && !same && G.chals.length ? "<br><b>Les votes adverses seront annulés.</b>" : ""}</p>
-    <label>🎬 Film ou série</label><input id="a_film" maxlength="80" autocomplete="off" placeholder="ex. Gladiator" value="${esc(prev.film || "")}">
-    <label>🎼 Compositeur ou interprète</label><input id="a_comp" maxlength="80" autocomplete="off" placeholder="ex. Hans Zimmer" value="${esc(prev.composer || "")}">
+    <label>${ic("film")}Film ou série</label><input id="a_film" maxlength="80" autocomplete="off" placeholder="ex. Gladiator" value="${esc(prev.film || "")}">
+    <label>${ic("music")}Compositeur ou interprète</label><input id="a_comp" maxlength="80" autocomplete="off" placeholder="ex. Hans Zimmer" value="${esc(prev.composer || "")}">
     <button class="btn" id="a_ok" style="margin-top:14px">Valider ma réponse</button>
     <button class="btn ghost" id="a_back">Annuler</button>`, {
     a_back: closeSheet,
@@ -2009,7 +1850,7 @@ function showTeams() {
     const years = G.kids ? pl.cards.map(id => `<span class="ychip kidchip">${esc(SONG[id].film)}</span>`).join("")
       : sortedCards(pl).map(c => `<span class="ychip">${c.year}</span>`).join("");
     return `<div class="teamcard ${i === G.turn ? "playing" : ""}">
-      <div class="row" style="justify-content:space-between"><b>${i === G.turn ? "🎧 " : ""}${esc(pl.name)}${i === me ? ` <span class="muted">(toi)</span>` : ""}</b>
+      <div class="row" style="justify-content:space-between"><b>${i === G.turn ? ic("headphones") : ""}${esc(pl.name)}${i === me ? ` <span class="muted">(toi)</span>` : ""}</b>
         <span>${pl.cards.length}/${G.target}${G.kids ? "" : ` · ${pl.tokens || 0} 🪙`}</span></div>
       <div class="ychips">${years}</div></div>`;
   }).join("")}<button class="btn" id="tm_close">Fermer</button>`, { tm_close: closeSheet });
@@ -2029,7 +1870,6 @@ function bindGame() {
   $("#pp") && ($("#pp").onclick = ppToggle);
   $("#replay") && ($("#replay").onclick = () => { if (G.multi && G.remote && activeHere()) dispatch({ t: "replay" }); playCurrent(); });
   $("#pause") && ($("#pause").onclick = () => { pause(); });
-  $("#devbtn") && ($("#devbtn").onclick = chooseDevice);
   tl.querySelectorAll(".gap").forEach(g => g.onclick = () => {
     // Un toucher qui vient de fermer une fenêtre ne doit déclencher aucune action dessous
     if ($("#ov") || Date.now() - sheetClosedAt < 450) return;
@@ -2059,7 +1899,7 @@ function bindGame() {
     sheet(`<h2>Quelle équipe vote ?</h2><p class="muted">Chaque équipe peut miser 1 🪙 sur une autre période (une fois par tour).</p>
       ${list.map(x => {
         const voted = G.chals.some(c => c.team === x.i), n = x.pl.tokens || 0, dis = voted || !n || !free;
-        return `<button class="btn sec" data-t="${x.i}" ${dis ? "disabled" : ""}>⚔️ ${esc(x.pl.name)} · ${n} 🪙${voted ? " · a voté" : !n ? " · plus de jeton" : ""}</button>`;
+        return `<button class="btn sec" data-t="${x.i}" ${dis ? "disabled" : ""}>${ic("swords")}${esc(x.pl.name)} · ${n} 🪙${voted ? " · a voté" : !n ? " · plus de jeton" : ""}</button>`;
       }).join("")}
       ${G.chals.length ? `<button class="btn ghost" id="t_clear">Annuler les votes</button>` : ""}
       <button class="btn ghost" id="t_close">Fermer</button>`, {
@@ -2086,181 +1926,26 @@ function bindGame() {
   $("#bonus") && ($("#bonus").onclick = () => { if (!G.bonus && navigator.vibrate) navigator.vibrate(40); dispatch({ t: "bonus" }); });
 }
 async function playCurrent() {
-  const s = SONG[G.card];
-  if (needsLogin(s) && !isLogged()) { setStatus("Ce morceau n'a pas d'identifiant Spotify dans songs.js : refais l'export de la liste (Réglages)."); return; }
+  if (!G || G.card == null) return;
+  const s = SONG[G.card], card = G.card;
   setStatus("");
   try {
     const uri = await resolveSong(s);
-    if (G.card !== s.id) return;
-    if (uri && G.multi && !G.curUri) dispatch({ t: "uri", card: s.id, uri });
-    if (!uri) { setStatus("Morceau introuvable sur Spotify — on en tire un autre."); offerFreeSkip(); return; }
-    if (playMode() === "embed") {
-      setStatus("");
-      const ok = await playEmbedded(uri);
-      if (G.card !== s.id) return;
-      if (ok) setStatus("");
-      return;
-    }
-    const res = await playUri(uri);
-    if (res === "ok") setStatus("");
-    else if (res === "silent") { setStatus("Spotify a reçu le morceau mais ne joue pas (" + lastPlayState + ")."); silentHelp(); }
-    else if (res === "premium") setStatus("Spotify refuse la lecture (Premium requis).");
-    else { setStatus("Aucun appareil Spotify actif."); noDeviceHelp(); }
-  } catch (e) {
-    setStatus(e instanceof AuthError ? "Session Spotify expirée : reconnecte-toi dans Réglages." : "Erreur réseau, appuie sur Réécouter.");
+    if (!G || G.card !== card) return;
+    if (uri && G.multi && !G.curUri) dispatch({ t: "uri", card, uri });
+    if (!uri) { setStatus("Morceau introuvable sur Deezer."); if (activeHere()) offerFreeSkip(); return; }
+    await playDeezer(card, uri);
+  } catch {
+    if (G && G.card === card) setStatus("Impossible de joindre Deezer : vérifie la connexion puis touche Réécouter.");
   }
 }
 function offerFreeSkip() {
-  sheet(`<h2>Morceau introuvable</h2><p class="muted">Ce morceau n'a pas été trouvé sur Spotify. On en tire un autre pour la même équipe.</p>
+  sheet(`<h2>Morceau introuvable</h2><p class="muted">Ce morceau n'a pas été trouvé sur Deezer. On en tire un autre pour la même équipe.</p>
     <button class="btn" id="s_ok">Tirer une autre musique</button>`, { s_ok: () => { closeSheet(); wantPlayNext = true; dispatch({ t: "redraw" }); } });
-}
-async function noDeviceHelp() {
-  let devs = [];
-  try { devs = await listDevices(); } catch {}
-  const list = devs.length
-    ? `<p class="muted">Appareils détectés — touche celui qui doit jouer :</p>` +
-      devs.map(d => `<button class="btn sec" data-dev="${esc(d.id)}" data-name="${esc(d.name)}">🔊 ${esc(d.name)} <span class="muted">(${esc(d.type)})</span></button>`).join("")
-    : `<p class="muted">Aucun appareil détecté pour l'instant.</p>`;
-  sheet(`<h2>Réveille Spotify</h2>
-    <p>Sur iPhone, Spotify se met en veille dès qu'on le quitte. Pour le garder actif :</p>
-    <p class="muted">1. Ouvre l'application Spotify.<br>2. Lance n'importe quel titre <b>et laisse-le jouer</b> (ne le mets pas en pause).<br>3. Reviens ici et appuie sur « Réessayer » : le jeu remplacera ce titre par la musique mystère.</p>
-    <a class="btn sec" href="spotify:" style="text-align:center;text-decoration:none">Ouvrir Spotify</a>
-    ${list}
-    <button class="btn" id="s_retry">Réessayer</button>
-    <button class="btn sec" id="s_diag">🩺 Diagnostic</button>
-    <button class="btn ghost" id="s_fallback">Mode secours : ouvrir la musique dans Spotify</button>
-    <p class="muted" style="font-size:12px">Détail technique : ${esc(lastPlayError || "aucun appareil")}</p>`, { s_retry: () => { closeSheet(); playCurrent(); }, s_diag: showDiagnostic, s_fallback: openFallback });
-  document.querySelectorAll("[data-dev]").forEach(b => b.onclick = () => {
-    LS.set("device", b.dataset.dev); LS.set("deviceName", b.dataset.name); closeSheet(); playCurrent();
-  });
-}
-
-function silentHelp() {
-  sheet(`<h2>Spotify ne démarre pas</h2>
-    <p>Le morceau a été envoyé à <b>${esc(lastDevice)}</b>, mais Spotify ne le joue pas en arrière-plan (${esc(lastPlayState)}).</p>
-    <p class="muted">Solution rapide : ouvre Spotify en <b>fenêtre contextuelle</b> (bouton ||| en bas → icône de Spotify → « Ouvrir en fenêtre contextuelle »), réduis-la dans un coin, puis appuie sur « Réessayer ».</p>
-    <a class="btn sec" href="spotify:" style="text-align:center;text-decoration:none">Ouvrir Spotify</a>
-    <button class="btn" id="x_retry">Réessayer</button>
-    <button class="btn sec" id="x_dev">🔊 Choisir un autre appareil</button>
-    <button class="btn ghost" id="x_fb">Mode secours : ouvrir la musique dans Spotify</button>`,
-    { x_retry: () => { closeSheet(); playCurrent(); }, x_dev: () => { closeSheet(); chooseDevice(); }, x_fb: openFallback });
-}
-
-async function chooseDevice() {
-  let devs = [];
-  try { devs = await listDevices(); } catch { toast("Connecte-toi à Spotify."); return; }
-  const pref = LS.get("device", "");
-  sheet(`<h2>Sur quel appareil jouer ?</h2>
-    ${devs.length ? devs.map(d => `<button class="btn ${d.id === pref ? "" : "sec"}" data-dev="${esc(d.id)}" data-name="${esc(d.name)}">🔊 ${esc(d.name)} <span style="opacity:.7">(${esc(d.type)}${d.is_active ? ", actif" : ""})</span></button>`).join("")
-      : `<p class="muted">Aucun appareil détecté. Ouvre Spotify sur ton téléphone, lance un titre, puis reviens.</p>`}
-    <button class="btn ghost" id="c_auto">Automatique</button>
-    <button class="btn ghost" id="c_close">Fermer</button>`, {
-    c_close: closeSheet,
-    c_auto: () => { LS.del("device"); LS.del("deviceName"); closeSheet(); playCurrent(); }
-  });
-  document.querySelectorAll("[data-dev]").forEach(b => b.onclick = () => {
-    LS.set("device", b.dataset.dev); LS.set("deviceName", b.dataset.name); closeSheet(); playCurrent();
-  });
-}
-
-async function openFallback() {
-  const s = SONG[G.card];
-  let uri = null; try { uri = await resolveSong(s); } catch {}
-  if (!uri) { toast("Morceau introuvable."); return; }
-  if (!confirm("Le titre sera visible dans Spotify. Demande à quelqu'un d'une autre équipe de lancer la musique, ou ne regarde pas l'écran. Continuer ?")) return;
-  closeSheet();
-  location.href = "https://open.spotify.com/track/" + uri.split(":").pop();
-}
-
-async function makePlaylists() {
-  const tok = LS.get("tok", null) || {};
-  if (!/playlist-modify/.test(tok.scope || "")) {
-    if (confirm("Spotify doit t'autoriser à créer des playlists. Te reconnecter maintenant ?")) login();
-    return;
-  }
-  const out = $("#plout"), btn = $("#mkpl"); btn.disabled = true;
-  const say = m => { if (out) out.innerHTML = m; };
-  const saved = LS.get("playlists", {}) || {};
-  const levels = ["kids", "facile", "moyen", "difficile"];
-  const done = [];
-  try {
-    // 1) On cherche chaque morceau une seule fois (beaucoup sont communs à plusieurs niveaux), 4 recherches en parallèle
-    const all = [...new Set(levels.flatMap(l => songsIn(YEAR_MIN, YEAR_MAX, l).map(x => x.id)))].map(id => SONG[id]);
-    const todo = all.filter(x => !knownUri(x));
-    const found = {}; let n = 0, next = 0;
-    all.forEach(x => { const u = knownUri(x); if (u) found[x.id] = u; });
-    say(`Recherche des morceaux sur Spotify… 0/${todo.length}`);
-    const worker = async () => {
-      while (next < todo.length) {
-        const x = todo[next++];
-        try { const u = await resolveSong(x); if (u) found[x.id] = u; } catch (e) { if (e instanceof AuthError) throw e; }
-        n++; if (n % 3 === 0 || n === todo.length) say(`Recherche des morceaux sur Spotify… ${n}/${todo.length}`);
-      }
-    };
-    await Promise.all([worker(), worker(), worker(), worker()]);
-    // 2) Création / mise à jour des 4 playlists
-    for (const lvl of levels) {
-      const songs = songsIn(YEAR_MIN, YEAR_MAX, lvl).slice().sort((a, b) => a.year - b.year);
-      const uris = []; let miss = 0;
-      songs.forEach(x => { const u = found[x.id]; if (u && !uris.includes(u)) uris.push(u); else if (!u) miss++; });
-      say(`${LEVELS[lvl]} : création de la playlist…`);
-      const name = "Hitster films & séries · " + LEVELS[lvl];
-      let id = saved[lvl], first = uris.slice(0, 100);
-      if (id) {
-        const r = await api(`/playlists/${id}/items`, { method: "PUT", body: JSON.stringify({ uris: first }) });
-        if (!r.ok) id = null;
-      }
-      if (!id) {
-        const r = await api("/me/playlists", { method: "POST", body: JSON.stringify({ name, public: false,
-          description: `Toutes les musiques du niveau ${LEVELS[lvl]} du jeu Hitster films & séries.` }) });
-        if (!r.ok) throw new Error("Création refusée par Spotify (" + r.status + ")");
-        id = (await r.json()).id; saved[lvl] = id; LS.set("playlists", saved);
-        const r2 = await api(`/playlists/${id}/items`, { method: "POST", body: JSON.stringify({ uris: first }) });
-        if (!r2.ok) throw new Error("Ajout refusé par Spotify (" + r2.status + ")");
-      }
-      for (let k = 100; k < uris.length; k += 100) {
-        const r = await api(`/playlists/${id}/items`, { method: "POST", body: JSON.stringify({ uris: uris.slice(k, k + 100) }) });
-        if (!r.ok) throw new Error("Ajout refusé par Spotify (" + r.status + ")");
-      }
-      done.push(`✅ <a href="https://open.spotify.com/playlist/${id}" target="_blank" style="color:var(--gold)">${esc(name)}</a> · ${uris.length} morceaux${miss ? ` (${miss} introuvable${miss > 1 ? "s" : ""})` : ""}`);
-      say(done.join("<br>"));
-    }
-    toast("Playlists créées sur ton Spotify 🎶");
-  } catch (e) {
-    say(done.join("<br>") + `<br>❌ ${esc(e instanceof AuthError ? "Session Spotify expirée : reconnecte-toi." : e.message || "Erreur")}`);
-  }
-  btn.disabled = false;
-}
-function exportSongs() {
-  const c = LS.get("ids2", {}) || {};
-  let found = 0;
-  const rows = SONG.map(s => {
-    const raw = ALL[s.id].slice(0, 5);
-    while (raw.length < 5) raw.push(s.orig);
-    raw.push(s.level === "facile" ? "F" : s.level === "moyen" ? "M" : s.level === "kids" ? "K" : "D");
-    const id = s.sid || (c[songKey(s)] || "").split(":").pop();
-    if (id) { found++; raw.push(id); }
-    return "  " + JSON.stringify(raw).replace(/","/g, '", "').replace(/",(\d)/g, '", $1').replace(/(\d),"/g, '$1, "') + ",";
-  });
-  const txt = `// Liste des compositions de films.
-// Format : [Titre affiché, Année de sortie du film, Compositeur, Morceau, Titre original, Niveau, ID Spotify]
-// Niveau : indicatif, c'est levels.js qui fait foi (F = Facile, M = Moyen, D = Difficile)
-// Pour corriger un morceau : remplace son ID (lien https://open.spotify.com/track/XXXXXXXX -> "XXXXXXXX").
-// Règle : au maximum 2 morceaux par film.
-const SONGS = [
-${rows.join("\n")}
-];
-`;
-  const blob = new Blob([txt], { type: "text/javascript" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = "songs.js";
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  toast(`songs.js exporté : ${found} / ${SONG.length} morceaux avec identifiant.` + (found < SONG.length ? " Les autres demanderont une connexion." : ""), 4500);
 }
 function showResult() {
   const s = SONG[G.card], r = G.result; if (!r) return;
-  const lines = (r.lines || []).map(l => `<div class="rline ${l.startsWith("✓") ? "ok" : l.startsWith("✗") ? "ko" : ""}">${esc(l)}</div>`).join("");
+  const lines = (r.lines || []).map(l => `<div class="rline ${l.startsWith("✓") ? "ok" : l.startsWith("✗") ? "ko" : ""}">${lineIc(esc(l))}</div>`).join("");
   sheet(`<div class="mystery reveal ${r.ok ? "ok" : "ko"}" style="margin-top:0">
       <div class="year">${s.year}</div><div class="film">${esc(s.film)}</div>
       <div class="track">« ${esc(s.track)} »</div><div class="comp">${esc(s.composer)}</div></div>
@@ -2285,13 +1970,13 @@ function closeSheet() {
   const f = sheetOnClose; sheetOnClose = null; if (f) f();
 }
 function openMenu() {
-  const rows = G.players.map((pl, i) => `<div class="score"><span>${i === G.turn ? "🎧 " : ""}<b>${esc(pl.name)}</b>${G.multi && i === myTeam() ? ` <span class="muted">(toi)</span>` : ""}</span>
+  const rows = G.players.map((pl, i) => `<div class="score"><span>${i === G.turn ? ic("headphones") : ""}<b>${esc(pl.name)}</b>${G.multi && i === myTeam() ? ` <span class="muted">(toi)</span>` : ""}</span>
     <span>${pl.cards.length}/${G.target} cartes · ${pl.tokens || 0} 🪙</span></div>`).join("");
   sheet(`<h2>Scores</h2>${rows}
     <p class="muted">Niveau ${LEVELS[G.level || "moyen"]} · Période : ${G.yMin || YEAR_MIN} – ${G.yMax || YEAR_MAX} · ${G.deck.length} musiques restantes dans la pioche.</p>
     ${G.multi ? `<p class="muted">Partie à plusieurs · code <b>${esc(NET ? NET.code : "")}</b></p>` : ""}
     <button class="btn" id="m_close">Reprendre</button>
-    <button class="btn sec" id="m_set">⚙️ Réglages</button>
+    <button class="btn sec" id="m_set">${ic("sliders")}Réglages</button>
     <button class="btn ghost" id="m_quit">${!G.multi ? "Abandonner la partie" : isHost() ? "Terminer la partie pour tous" : "Quitter la partie"}</button>`, {
     m_close: closeSheet,
     m_set: () => { closeSheet(); go("settings"); },
@@ -2308,7 +1993,7 @@ function viewWin() {
   const w = G.players[G.winner];
   const ranking = [...G.players].sort((a, b) => b.cards.length - a.cards.length)
     .map(pl => `<div class="score"><b>${esc(pl.name)}</b><span>${pl.cards.length} ${G.kids ? "bonne" + (pl.cards.length > 1 ? "s" : "") + " réponse" + (pl.cards.length > 1 ? "s" : "") : "cartes"}</span></div>`).join("");
-  return `<div class="screen win"><div class="trophy">🏆</div><h1>${esc(w.name)}</h1><p class="muted">remporte la partie !</p>
+  return `<div class="screen win"><div class="trophy">${ic("trophy")}</div><h1>${esc(w.name)}</h1><p class="muted">remporte la partie !</p>
     <div class="content"><div class="box" style="text-align:left">${ranking}</div></div>
     <div class="footer">${!G.multi
       ? `<button class="btn" id="again">Rejouer</button><button class="btn sec" id="home">Accueil</button>`
@@ -2328,11 +2013,9 @@ function bindWin() {
 /* ================= Démarrage ================= */
 (async () => {
   applyTheme(curTheme());
-  await handleRedirect();
   if (NET) { if (isGuest()) G = null; screen = G ? "game" : "lobby"; render(); netStart(); }
   else render();
 })();
 </script>
-<script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
 </body>
 </html>
