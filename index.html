@@ -335,6 +335,12 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
 .nf-ok{display:none;background:var(--btnbg);color:var(--onacc)}
 .namefield:focus-within .nf-ok{display:grid}
 .namefield:focus-within .nf-edit{display:none}
+/* Variante sobre (champs film / compositeur) : contour normal, coche discrète pendant la saisie */
+.namefield.plain{margin:0}
+.namefield.plain input,:root[data-theme="pop"] .namefield.plain input{border:var(--bw) solid var(--line);box-shadow:none;padding-right:56px}
+:root[data-theme="pop"] .namefield.plain input{border-color:var(--bc)}
+.namefield.plain input:focus,:root[data-theme="pop"] .namefield.plain input:focus{box-shadow:none;border-color:var(--muted)}
+.namefield.plain .nf-ok{background:var(--soft);color:var(--text)}
 /* Overlays */
 .overlay{position:fixed;inset:0;background:rgba(5,3,9,.78);display:flex;align-items:flex-end;z-index:20}
 .sheet{width:100%;max-height:88dvh;overflow:auto;background:var(--bg2);border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
@@ -418,9 +424,9 @@ body.haschat #app{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
     <form id="chform" autocomplete="off"><input id="chmsg" maxlength="200" placeholder="Écrire un message…" enterkeyhint="send"><button type="submit" aria-label="Envoyer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button></form></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=58"></script>
-<script src="levels.js?v=58"></script>
-<script src="deezer.js?v=58" onerror="void 0"></script>
+<script src="songs.js?v=59"></script>
+<script src="levels.js?v=59"></script>
+<script src="deezer.js?v=59" onerror="void 0"></script>
 <script>
 // Garde-fou : si songs.js ou levels.js est absent ou invalide (par ex. deezer.js déposé sous le nom songs.js),
 // on affiche un message clair au lieu d'un écran vide.
@@ -528,7 +534,7 @@ const SONG = ALL.map((r, i) => {
 });
 if (!HAS_LEVELS) setTimeout(() => toast("Fichier levels.js absent : dépose-le sur GitHub pour les nouveaux niveaux."), 900);
 const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
-const APP_VERSION = "58 (Hitster films & séries)";
+const APP_VERSION = "59 (Hitster films & séries)";
 function b64url(buf) {
   return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
@@ -748,17 +754,17 @@ function render() {
 }
 
 /* ---------- Champs de nom d'équipe ---------- */
-function nameField(attrs) {
-  return `<div class="namefield"><input ${attrs} autocomplete="off" enterkeyhint="done">
-    <span class="nf-btn nf-edit" aria-hidden="true">${ic("pen")}</span>
+function nameField(attrs, plain = false) {
+  return `<div class="namefield${plain ? " plain" : ""}"><input ${attrs} autocomplete="off" enterkeyhint="${plain ? "next" : "done"}">
+    ${plain ? "" : `<span class="nf-btn nf-edit" aria-hidden="true">${ic("pen")}</span>`}
     <button type="button" class="nf-btn nf-ok" aria-label="Valider le nom">${ic("check")}</button></div>`;
 }
-function bindNameFields() {
-  document.querySelectorAll(".namefield").forEach(f => {
+function bindNameFields(scope = document, enterLeaves = true) {
+  scope.querySelectorAll(".namefield").forEach(f => {
     const inp = f.querySelector("input"), ok = f.querySelector(".nf-ok");
     ok.onpointerdown = e => e.preventDefault();   // garde le champ actif jusqu'au clic sur la coche
     ok.onclick = () => inp.blur();                // ferme le clavier ; « change » enregistre le nom
-    inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); inp.blur(); } });
+    if (enterLeaves) inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); inp.blur(); } });
   });
 }
 // Toucher ailleurs que dans un champ le quitte (et ferme le clavier), sur tous les écrans
@@ -1875,8 +1881,8 @@ function openAnswer(i) {
   sheet(`<h2>${same ? "Modifier ta réponse" : voting ? "Changer de réponse" : "Ta réponse"}</h2>
     <p class="muted">Période choisie : <b style="color:var(--gold)">${esc(gapLabel(cards, i))}</b><br>
       Propose le film et le compositeur. Si les deux sont justes, gagne 1 🪙 de vote.${voting && !same && G.chals.length ? "<br><b>Les votes adverses seront annulés.</b>" : ""}</p>
-    <label>${ic("film")}Film ou série</label><input id="a_film" maxlength="80" autocomplete="off" placeholder="ex. Gladiator" value="${esc(prev.film || "")}">
-    <label>${ic("music")}Compositeur ou interprète</label><input id="a_comp" maxlength="80" autocomplete="off" placeholder="ex. Hans Zimmer" value="${esc(prev.composer || "")}">
+    <label>${ic("film")}Film ou série</label>${nameField(`id="a_film" maxlength="80" placeholder="ex. Gladiator" value="${esc(prev.film || "")}"`, true)}
+    <label>${ic("music")}Compositeur ou interprète</label>${nameField(`id="a_comp" maxlength="80" placeholder="ex. Hans Zimmer" value="${esc(prev.composer || "")}"`, true)}
     <button class="btn" id="a_ok" style="margin-top:14px">Valider ma réponse</button>
     <button class="btn ghost" id="a_back">Annuler</button>`, {
     a_back: closeSheet,
@@ -1888,6 +1894,7 @@ function openAnswer(i) {
       if (changed && had) toast("Nouvelle période : les votes adverses sont annulés.");
     }
   }, () => { pendGap = null; if (screen === "game") render(); });
+  bindNameFields($("#ov"), false); // coche de validation ; Entrée garde son rôle (champ suivant, puis valider)
   const f = $("#a_film"), c = $("#a_comp");
   f.onkeydown = e => { if (e.key === "Enter") c.focus(); };
   c.onkeydown = e => { if (e.key === "Enter") $("#a_ok").click(); };
