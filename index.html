@@ -142,6 +142,8 @@ label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
   background:transparent;color:var(--muted);font-size:15px;font-weight:700;text-align:center;transition:all .12s}
 .gap.sel{border-color:var(--gold);background:var(--btnbg);color:var(--onacc);border-style:solid;transform:scale(1.02)}
 .gap:disabled{opacity:.5}
+.gap.back{position:relative;cursor:pointer}
+.gap .gedit{position:absolute;right:14px;top:50%;width:17px;height:17px;transform:translateY(-50%);opacity:.75}
 .tcard{margin:0 14px;padding:10px 14px;border-radius:var(--r);background:var(--card);border:var(--bw) solid var(--bc);box-shadow:var(--csh);
   display:flex;gap:12px;align-items:center}
 .tcard .y{font-family:var(--yfont);font-size:26px;font-weight:700;color:var(--gold2);min-width:62px}
@@ -341,9 +343,12 @@ button.teambadge{border:0;cursor:pointer;font-family:inherit}
 .fixrow{display:flex;gap:6px;margin-top:6px}.fixrow input{flex:1;min-width:0;padding:9px 10px;font-size:16px}.fixrow .btn{margin:0}
 .test-list{max-height:none}
 .btn{position:relative}
+.rwrap{position:relative;display:block;min-width:0}.rwrap>.btn{width:100%}
 .tring{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;overflow:visible}
 .tring rect{fill:none;stroke:var(--ringC);stroke-width:3}
 .tring .trk{opacity:.22}
+.rwrap:has(.btn:disabled) .tring rect{stroke:var(--gold)}
+:root[data-theme="pop"] .rwrap:has(.btn:disabled) .tring rect{stroke:#1b1b1b}
 .tring .run{stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:0;animation:tdrain linear forwards}
 :root{--ringC:rgba(0,0,0,.38)}
 :root[data-theme="perf"]{--ringC:rgba(255,255,255,.75)}
@@ -407,8 +412,8 @@ body.haschat #app{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
   <div class="mask"><b>🎵 Musique mystère</b><span>Touche ▶ pour lancer la musique →</span></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=51"></script>
-<script src="levels.js?v=51"></script>
+<script src="songs.js?v=52"></script>
+<script src="levels.js?v=52"></script>
 <script>
 "use strict";
 /* ================= Utilitaires ================= */
@@ -478,7 +483,7 @@ const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Dif
 /* ================= Spotify : connexion (PKCE) ================= */
 const REDIRECT_URI = location.origin + location.pathname;
 const SCOPES = "user-read-playback-state user-modify-playback-state playlist-modify-private playlist-modify-public";
-const APP_VERSION = "51 (Hitster films & séries)";
+const APP_VERSION = "52 (Hitster films & séries)";
 const DEFAULT_CLIENT_ID = "20cb0a147708421b9f7d5d0bf27c9e6a";
 const clientId = () => (LS.get("clientId", "") || DEFAULT_CLIENT_ID).trim();
 
@@ -1469,42 +1474,57 @@ let pickTeam = null, pickGap = null;
 /* ---------- Minuteur de vote (parties à plusieurs téléphones) ---------- */
 const VOTE_MS = 10000;
 let clockOff = 0, voteTimerLocal = null, voteTimerHost = null;
-function voteLeft() {
-  if (!G || !G.multi || G.phase !== "vote" || !G.voteStart || G.voteClosed) return null;
-  return G.voteStart + (isGuest() ? clockOff : 0) + VOTE_MS - Date.now();
+// Délai d'une équipe (horloge de l'arbitre) : 10 s, ou 20 s si elle a touché « Voter »
+const teamDeadline = i => G.voteStart + VOTE_MS * (G.voteExt && G.voteExt[i] ? 2 : 1);
+const voteOpenFor = i => !G.voteClosed && !(G.closedTeams || []).includes(i);
+let pickDur = VOTE_MS;
+function voteLeft(team = myTeam()) {
+  if (!G || !G.multi || G.phase !== "vote" || !G.voteStart || team == null || !voteOpenFor(team)) return null;
+  const ext = (G.voteExt && G.voteExt[team]) || (team === myTeam() && pickTeam != null);
+  return G.voteStart + VOTE_MS * (ext ? 2 : 1) + (isGuest() ? clockOff : 0) - Date.now();
 }
 const iDecided = () => { const me = myTeam(); return me == null || me === G.turn || G.chals.some(c => c.team === me) || (G.passes || []).includes(me); };
+// L'arbitre ferme les votes équipe par équipe quand leur délai est dépassé (1,5 s de marge réseau)
+function hostSweep() {
+  if (!G || !G.multi || G.phase !== "vote" || !G.voteStart || G.voteClosed) return;
+  const now = Date.now(), prev = JSON.parse(JSON.stringify(G));
+  let changed = false, next = Infinity;
+  G.passes = G.passes || []; G.closedTeams = G.closedTeams || [];
+  G.players.forEach((_, i) => {
+    if (i === G.turn || G.closedTeams.includes(i)) return;
+    const end = teamDeadline(i) + 1500;
+    if (now >= end) {
+      if (!G.chals.some(c => c.team === i) && !G.passes.includes(i)) G.passes.push(i);
+      G.closedTeams.push(i); changed = true;
+    } else next = Math.min(next, end);
+  });
+  if (next === Infinity && !G.voteClosed) { G.voteClosed = true; changed = true; }
+  if (changed) afterChange(prev);
+  else if (next !== Infinity) voteTimerHost = setTimeout(hostSweep, next - now + 30);
+}
 function armVoteTimer() {
   clearTimeout(voteTimerLocal); clearTimeout(voteTimerHost);
-  const left = voteLeft(); if (left == null) return;
-  if (isHost()) {
-    const vs = G.voteStart;
-    voteTimerHost = setTimeout(() => {
-      if (!G || G.phase !== "vote" || G.voteStart !== vs || G.voteClosed) return;
-      const prev = JSON.parse(JSON.stringify(G));
-      G.passes = G.passes || [];
-      G.players.forEach((_, i) => { if (i !== G.turn && !G.chals.some(c => c.team === i) && !G.passes.includes(i)) G.passes.push(i); });
-      G.voteClosed = true; afterChange(prev);
-    }, Math.max(0, left + 1500));
-  }
-  if (!iDecided()) voteTimerLocal = setTimeout(() => {
+  if (!G || !G.multi || G.phase !== "vote" || !G.voteStart || G.voteClosed) return;
+  if (isHost()) hostSweep();
+  const left = voteLeft(); if (left == null || iDecided()) return;
+  voteTimerLocal = setTimeout(() => {
     if (!G || G.phase !== "vote" || iDecided()) return;
     if (pickTeam != null && pickGap != null) dispatch({ t: "vote", team: pickTeam, gap: pickGap });
     else dispatch({ t: "pass" });
     pickTeam = null; pickGap = null; if (isGuest()) render();
   }, Math.max(0, left));
 }
-// Anneau qui se vide autour d'un bouton pendant le temps restant
-function ring(left) {
-  if (left == null || left <= 0) return "";
-  return `<svg class="tring" aria-hidden="true"><rect class="trk"/><rect class="run" pathLength="100" style="animation-duration:${VOTE_MS}ms;animation-delay:-${Math.round(VOTE_MS - left)}ms"/></svg>`;
+// Anneau qui se vide sur le bord d'un bouton (placé à côté du bouton : reste visible même bouton désactivé)
+function ringBtn(btnHtml, left, dur = VOTE_MS) {
+  if (left == null || left <= 0) return btnHtml;
+  return `<span class="rwrap">${btnHtml}<svg class="tring" aria-hidden="true"><rect class="trk"/><rect class="run" pathLength="100" style="animation-duration:${Math.round(dur)}ms;animation-delay:-${Math.max(0, Math.round(dur - left))}ms"/></svg></span>`;
 }
 function sizeRings() {
   document.querySelectorAll(".tring").forEach(svg => {
     // Anneau posé sur le bord du bouton, avec exactement le même arrondi
-    const btn = svg.parentElement, cs = getComputedStyle(btn), bw = parseFloat(cs.borderTopWidth) || 0;
+    const btn = svg.parentElement.querySelector(".btn"), cs = getComputedStyle(btn), bw = parseFloat(cs.borderTopWidth) || 0;
     const W = btn.offsetWidth, H = btn.offsetHeight, sw = 3, d = (bw > 1 ? bw : 0) + sw / 2; // bouton à contour épais (Pop) : juste contre le contour
-    svg.style.left = svg.style.top = -bw + "px"; svg.style.width = W + "px"; svg.style.height = H + "px";
+    svg.style.left = btn.offsetLeft + "px"; svg.style.top = btn.offsetTop + "px"; svg.style.width = W + "px"; svg.style.height = H + "px";
     const br = parseFloat(cs.borderTopLeftRadius) || 0, rr = Math.max(0, Math.min(br - d, (H - 2 * d) / 2));
     svg.querySelectorAll("rect").forEach(r => {
       r.setAttribute("x", d); r.setAttribute("y", d); r.setAttribute("width", Math.max(0, W - 2 * d)); r.setAttribute("height", Math.max(0, H - 2 * d));
@@ -1545,7 +1565,7 @@ function postState(prev) {
       if (G.multi && myTeam() === G.turn && navigator.vibrate) navigator.vibrate([60, 60, 60]);
     }
   }
-  if (G.phase !== "vote" || G.voteClosed) { pickTeam = null; pickGap = null; }
+  if (G.phase !== "vote" || (G.multi && myTeam() != null && G.voteStart && !voteOpenFor(myTeam()))) { pickTeam = null; pickGap = null; }
   armVoteTimer();
   if (newCard) needTap(false);
   if (G.multi && G.phase === "vote" && activeHere() && prev && prev.phase === "vote" && allDecided() &&
@@ -1581,8 +1601,19 @@ function applyAction(a) {
     case "answer": {
       if (!active || G.phase !== "listen" || G.gap == null) return false;
       G.answer = { film: String(a.film || "").slice(0, 80), composer: String(a.composer || "").slice(0, 80) };
-      G.phase = "vote"; G.chals = []; G.passes = []; G.voteStart = Date.now(); G.voteClosed = false;
+      G.phase = "vote"; G.chals = []; G.passes = []; G.voteStart = Date.now(); G.voteClosed = false; G.voteExt = {}; G.closedTeams = [];
       return true;
+    }
+    case "back": {
+      if (!active || G.phase !== "vote") return false;
+      G.phase = "listen"; G.chals = []; G.passes = []; G.voteStart = null; G.voteClosed = false; G.voteExt = {}; G.closedTeams = [];
+      return true;
+    }
+    case "votepick": {
+      if (!multi || G.phase !== "vote" || a.by == null || a.by === G.turn || !G.voteStart || !voteOpenFor(a.by)) return false;
+      if (Date.now() > G.voteStart + VOTE_MS + 1500) return false;
+      G.voteExt = G.voteExt || {}; if (G.voteExt[a.by]) return false;
+      G.voteExt[a.by] = true; return true;
     }
     case "editanswer": {
       if (!active || G.phase !== "vote") return false;
@@ -1591,7 +1622,7 @@ function applyAction(a) {
     }
     case "vote": {
       const team = multi ? a.by : a.team;
-      if (G.phase !== "vote" || team == null || team === G.turn || (multi && G.voteClosed)) return false;
+      if (G.phase !== "vote" || team == null || team === G.turn || (multi && !voteOpenFor(team))) return false;
       const pl = G.players[team];
       if (!pl || (pl.tokens || 0) <= 0 || G.chals.some(c => c.team === team)) return false;
       const used = [G.gap, ...G.chals.map(c => c.gap)];
@@ -1599,14 +1630,14 @@ function applyAction(a) {
       G.chals.push({ team, gap: a.gap }); G.passes = (G.passes || []).filter(t => t !== team); return true;
     }
     case "pass": {
-      if (!multi || G.phase !== "vote" || a.by == null || a.by === G.turn || G.voteClosed) return false;
+      if (!multi || G.phase !== "vote" || a.by == null || a.by === G.turn || !voteOpenFor(a.by)) return false;
       G.passes = G.passes || [];
       if (G.passes.includes(a.by)) return false;
       G.passes.push(a.by); return true;
     }
     case "unvote": {
       const team = multi ? a.by : a.team, n = G.chals.length;
-      if (G.phase !== "vote" || (multi && G.voteClosed)) return false;
+      if (G.phase !== "vote" || (multi && !voteOpenFor(team))) return false;
       G.chals = G.chals.filter(c => c.team !== team); return G.chals.length !== n;
     }
     case "reveal": if (!active || G.phase !== "vote") return false; resolveTurn(); return true;
@@ -1742,6 +1773,7 @@ function gapLabel(cards, i) {
 }
 
 // Un seul espace d'information en haut : consigne en cours, sinon message d'erreur, sinon tour de jeu
+const EDIT_ICO = `<svg class="gedit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>`;
 function ctxBar(instr, turn) {
   const msg = instr || (statusMsg ? esc(statusMsg) : "") || turn;
   return msg ? `<div class="turnbar">${msg}</div>` : "";
@@ -1777,8 +1809,10 @@ function viewGame() {
   for (let i = 0; i <= cards.length; i++) {
     if (!rev) {
       const ch = chals.find(c => c.gap === i), mineP = pickTeam != null && pickGap === i;
-      tl += `<button class="gap ${G.gap === i ? "sel" : ""} ${ch || mineP ? "chal" : ""}" data-g="${i}" ${canTap ? "" : "disabled"}>${
-        G.gap === i ? "🎧 " : ch ? "⚔️ " + esc(G.players[ch.team].name) + " · " : mineP ? "⚔️ Ton vote · " : ""}${gapLabel(cards, i)}</button>`;
+      const back = ph === "vote" && G.gap === i && active && pickTeam == null;
+      tl += `<button class="gap ${G.gap === i ? "sel" : ""} ${ch || mineP ? "chal" : ""} ${back ? "back" : ""}" data-g="${i}" ${canTap || back ? "" : "disabled"}
+        ${back ? `aria-label="Modifier ma réponse"` : ""}>${
+        G.gap === i ? "🎧 " : ch ? "⚔️ " + esc(G.players[ch.team].name) + " · " : mineP ? "⚔️ Ton vote · " : ""}${gapLabel(cards, i)}${back ? EDIT_ICO : ""}</button>`;
     }
     if (i < cards.length) {
       const c = cards[i];
@@ -1804,14 +1838,13 @@ function viewGame() {
       : `<button class="btn sec" disabled>En attente de ${esc(p.name)}…</button>`;
   } else if (ph === "vote") {
     const nv = chals.length;
-    const editBtn = `<button class="btn ghost" id="editans" style="margin:0;padding:8px">✏️ ${G.answer && (G.answer.film || G.answer.composer) ? "Modifier" : "Ajouter"} le film et le compositeur</button>`;
     hint = `🔒 Réponse de ${esc(p.name)} verrouillée · ⚔️ ${nv ? nv + " vote" + (nv > 1 ? "s" : "") : "aucun vote pour l'instant"}`;
     if (multi) hint = allDecided() ? `✓ Toutes les équipes ont décidé${active ? " : tu peux voir la réponse" : ""}`
       : `🔒 ${G.players.map((pl, i) => i === G.turn ? "" : `${esc(pl.name)} : ${chals.some(c => c.team === i) ? "⚔️ vote" : (G.passes || []).includes(i) ? "passe" : "…"}`).filter(Boolean).join(" · ")}`;
     const left = voteLeft();
     if (pickTeam != null && multi) {
       actions = `<div class="row eq"><button class="btn sec" id="votecancel">Annuler</button>
-        <button class="btn" id="voteok" ${pickGap == null ? "disabled" : ""}>Valider mon vote${ring(left)}</button></div>`;
+        ${ringBtn(`<button class="btn" id="voteok" ${pickGap == null ? "disabled" : ""}>Valider mon vote</button>`, left, pickDur)}</div>`;
       hint = pickGap == null ? `⚔️ Touche une case libre (1 🪙)` : `⚔️ Ton vote : <b>${esc(gapLabel(cards, pickGap))}</b>`;
     } else if (pickTeam != null) {
       actions = `<button class="btn sec" id="votecancel">Annuler</button>`;
@@ -1819,16 +1852,16 @@ function viewGame() {
     } else if (!multi) {
       const any = G.players.some((_, i) => canVoteTeam(i));
       actions = `<div class="row">${any ? `<button class="btn sec" id="vote" style="flex:0 0 42%">⚔️ Voter</button>` : ""}
-        <button class="btn" id="reveal">Voir la réponse</button></div>${editBtn}`;
+        <button class="btn" id="reveal">Voir la réponse</button></div>`;
     } else if (active) {
-      actions = `<button class="btn" id="reveal">Voir la réponse</button>${editBtn}`;
+      actions = `<button class="btn" id="reveal">Voir la réponse</button>`;
     } else {
       const myVote = chals.find(c => c.team === me), passed = (G.passes || []).includes(me);
       const open = left != null && left > 0;
       if (myVote) actions = open ? `<button class="btn sec" id="unvote">✕ Retirer mon vote (${esc(gapLabel(cards, myVote.gap))})</button>`
         : `<button class="btn sec" disabled>⚔️ Vote enregistré : ${esc(gapLabel(cards, myVote.gap))}</button>`;
       else if (passed || !open) actions = `<button class="btn sec" disabled>${passed ? "✓ Tu as passé ton tour de vote" : "Votes terminés"}</button>`;
-      else actions = `<div class="row eq"><button class="btn" id="vote" ${canVoteTeam(me) ? "" : "disabled"}>⚔️ Voter (${mine.tokens || 0} 🪙)${canVoteTeam(me) ? ring(left) : ""}</button>
+      else actions = `<div class="row eq">${ringBtn(`<button class="btn" id="vote" ${canVoteTeam(me) ? "" : "disabled"}>⚔️ Voter (${mine.tokens || 0} 🪙)</button>`, canVoteTeam(me) ? left : null)}
         <button class="btn sec" id="pass">Passer</button></div>`;
     }
   } else if (active) {
@@ -1960,6 +1993,13 @@ function bindGame() {
       if (isGuest()) render();
       return;
     }
+    if (G.phase === "vote" && i === G.gap && activeHere() && pickTeam == null) {
+      const had = G.chals.length;
+      dispatch({ t: "back" });
+      if (isGuest()) { G.phase = "listen"; G.chals = []; render(); }
+      if (had) toast("Votes adverses annulés : tu peux modifier ta réponse.");
+      openAnswer(); return;
+    }
     if (G.phase === "listen" && activeHere()) {
       dispatch({ t: "gap", i });
       if (isGuest()) G.gap = i; // affichage immédiat en attendant l'arbitre
@@ -1968,7 +2008,11 @@ function bindGame() {
   });
   $("#answer") && ($("#answer").onclick = openAnswer);
   $("#vote") && ($("#vote").onclick = () => {
-    if (G.multi) { pickTeam = myTeam(); render(); return; }
+    if (G.multi) {
+      const left0 = voteLeft(); pickTeam = myTeam(); pickGap = null;
+      pickDur = Math.max(1000, (left0 || 0) + VOTE_MS); // 10 s de plus pour choisir sa case
+      dispatch({ t: "votepick" }); armVoteTimer(); render(); return;
+    }
     const free = 1 + G.chals.length < cur().cards.length + 1;
     const list = G.players.map((pl, i) => ({ pl, i })).filter(x => x.i !== G.turn);
     sheet(`<h2>Quelle équipe vote ?</h2><p class="muted">Chaque équipe peut miser 1 🪙 sur une autre période (une fois par tour).</p>
@@ -1995,7 +2039,6 @@ function bindGame() {
     const team = pickTeam, gap = pickGap; pickTeam = null; pickGap = null;
     dispatch({ t: "vote", team, gap }); if (isGuest()) render();
   });
-  $("#editans") && ($("#editans").onclick = openAnswer);
   sizeRings();
   $("#next") && ($("#next").onclick = () => dispatch({ t: "next" }));
   $("#hlcard") && ($("#hlcard").onclick = showResult);
