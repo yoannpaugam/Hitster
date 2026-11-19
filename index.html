@@ -434,10 +434,10 @@ body.haschat #app{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
     <form id="chform" autocomplete="off"><input id="chmsg" maxlength="200" placeholder="Écrire un message…" enterkeyhint="send"><button type="submit" aria-label="Envoyer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button></form></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=64"></script>
-<script src="levels.js?v=64"></script>
-<script src="deezer.js?v=64" onerror="void 0"></script>
-<script src="corrections.js?v=64" onerror="void 0"></script>
+<script src="songs.js?v=65"></script>
+<script src="levels.js?v=65"></script>
+<script src="deezer.js?v=65" onerror="void 0"></script>
+<script src="corrections.js?v=65" onerror="void 0"></script>
 <script>
 // Garde-fou : si songs.js ou levels.js est absent ou invalide (par ex. deezer.js déposé sous le nom songs.js),
 // on affiche un message clair au lieu d'un écran vide.
@@ -547,7 +547,7 @@ const SONG = ALL.map((r, i) => {
 });
 if (!HAS_LEVELS) setTimeout(() => toast("Fichier levels.js absent : dépose-le sur GitHub pour les nouveaux niveaux."), 900);
 const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
-const APP_VERSION = "64 (Hitster films & séries)";
+const APP_VERSION = "65 (Hitster films & séries)";
 function b64url(buf) {
   return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
@@ -855,14 +855,6 @@ function viewSettings() {
       <div class="lvlgrid">${["kids", "facile", "moyen", "difficile"].map(l => `<button class="btn sec" data-pl="${l}">${LEVELS[l]}<br><span style="font-weight:500;font-size:13px">${songsIn(YEAR_MIN, YEAR_MAX, l).length} morceaux</span></button>`).join("")}</div>
       <a class="btn" href="https://www.tunemymusic.com/transfer/freetext-to-deezer" target="_blank" rel="noopener" style="text-align:center;text-decoration:none;margin-top:10px">Ouvrir l'outil d'import${ic("arrow", "after")}</a>
     </div>
-    <div class="box">
-      <b>Corrections de la liste</b>
-      <p class="muted">${(() => { const d = corrData(), lr = localRemoved().length, lp = localReports().length;
-        return `${d.removed.length} musique(s) supprimée(s), ${d.reports.length} erreur(s) signalée(s)${lr + lp ? ` (dont ${lr + lp} sur ce téléphone, pas encore sur GitHub)` : ""}.`; })()}
-        On supprime ou signale une musique depuis le détail des musiques, en fin de partie. Exporte ensuite <code>corrections.js</code> et dépose-le sur GitHub : les suppressions valent pour tout le monde.</p>
-      <button class="btn" id="corrx">${ic("download")}Exporter corrections.js</button>
-      <button class="btn sec" id="corrc">Copier la liste des corrections</button>
-    </div>
     <label>Relais pour les parties à plusieurs</label>
     <select id="broker">
       <option value="wss://broker.hivemq.com:8884/mqtt" ${BROKER().includes("hivemq") ? "selected" : ""}>Relais 1 (par défaut)</option>
@@ -908,7 +900,6 @@ function bindSettings() {
   $("#broker").onchange = e => { LS.set("broker", e.target.value); if (NET) netStart(); toast("Relais changé."); };
   $("#clearcache").onclick = () => { LS.del("dz"); previewCache.clear(); toast("Mémoire vidée."); render(); };
   $("#export").onclick = exportDeezer;
-  $("#corrx").onclick = exportCorrections; $("#corrc").onclick = copyCorrections;
   document.querySelectorAll("[data-pl]").forEach(b => b.onclick = () => copyPlaylist(b.dataset.pl));
   // Correction à la main : lien Deezer collé sous un morceau introuvable
   $("#testout").onclick = async e => {
@@ -2220,16 +2211,25 @@ function viewPlayed() {
     <p class="muted">${log.length} musique${log.length > 1 ? "s" : ""}, dans l'ordre où elles sont passées.</p>
     ${admin ? "" : `<p class="muted">Pour supprimer une musique ou signaler une erreur, l'organisateur déverrouille d'abord les réglages avancés sur son téléphone.</p>`}
     ${rows}
+    ${admin ? (() => { const d = corrData(), lr = localRemoved().length, lp = localReports().length;
+      return `<div class="box" style="margin-top:16px">
+      <b>Corrections de la liste</b>
+      <p class="muted">${d.removed.length} musique(s) supprimée(s) et ${d.reports.length} erreur(s) signalée(s) au total${lr + lp ? `, dont ${lr + lp} sur ce téléphone qui ne sont pas encore sur GitHub` : ""}.
+        Pour que les suppressions valent sur tous les téléphones, exporte <code>corrections.js</code> et dépose-le sur GitHub. Pour les erreurs signalées, copie la liste et envoie-la à Claude.</p>
+      <button class="btn" id="corrx">${ic("download")}Exporter corrections.js</button>
+      <button class="btn sec" id="corrc">Copier la liste des corrections</button>
+    </div>`; })() : ""}
     <button class="btn" id="back2" style="margin-top:16px">Retour aux résultats</button>
   </div>`;
 }
 function bindPlayed() {
   const back = () => go(G && G.winner != null ? "win" : "game");
   $("#back").onclick = back; $("#back2").onclick = back;
+  $("#corrx") && ($("#corrx").onclick = exportCorrections); $("#corrc") && ($("#corrc").onclick = copyCorrections);
   const songAt = i => SONG[(G.log || [])[+i].id];
   document.querySelectorAll("[data-remove]").forEach(b => b.onclick = () => {
     const s = songAt(b.dataset.remove);
-    if (!confirm(`Supprimer « ${s.film} — ${s.track} » de l'appli ?\n\nElle ne sortira plus sur ce téléphone. Pour tout le monde : Réglages → Exporter corrections.js, puis dépose le fichier sur GitHub.`)) return;
+    if (!confirm(`Supprimer « ${s.film} — ${s.track} » de l'appli ?\n\nElle ne sortira plus sur ce téléphone. Pour tout le monde : « Exporter corrections.js » en bas de cet écran, puis dépose le fichier sur GitHub.`)) return;
     const l = localRemoved().filter(r => r.key !== songKey(s));
     l.push({ key: songKey(s), film: s.film, track: s.track, composer: s.composer, year: s.year, at: new Date().toISOString().slice(0, 10) });
     LS.set("removed", l); refreshCorr(); toast("Musique supprimée."); render();
@@ -2273,7 +2273,7 @@ function corrData() {
 }
 function exportCorrections() {
   const d = corrData();
-  const txt = `// Corrections de la liste des musiques (exporté depuis Réglages → Exporter corrections.js).
+  const txt = `// Corrections de la liste des musiques (exporté depuis l'écran des musiques de fin de partie).
 // removed : musiques retirées du jeu pour tout le monde. reports : erreurs signalées, à corriger dans levels.js.
 // Clé : "titre original|morceau" (comme dans levels.js). Ne touche pas à songs.js.
 const CORRECTIONS = ${JSON.stringify(d, null, 2)};
