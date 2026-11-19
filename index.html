@@ -427,9 +427,9 @@ body.haschat #app{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
     <form id="chform" autocomplete="off"><input id="chmsg" maxlength="200" placeholder="Écrire un message…" enterkeyhint="send"><button type="submit" aria-label="Envoyer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button></form></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"></script>
-<script src="songs.js?v=61"></script>
-<script src="levels.js?v=61"></script>
-<script src="deezer.js?v=61" onerror="void 0"></script>
+<script src="songs.js?v=63"></script>
+<script src="levels.js?v=63"></script>
+<script src="deezer.js?v=63" onerror="void 0"></script>
 <script>
 // Garde-fou : si songs.js ou levels.js est absent ou invalide (par ex. deezer.js déposé sous le nom songs.js),
 // on affiche un message clair au lieu d'un écran vide.
@@ -537,7 +537,7 @@ const SONG = ALL.map((r, i) => {
 });
 if (!HAS_LEVELS) setTimeout(() => toast("Fichier levels.js absent : dépose-le sur GitHub pour les nouveaux niveaux."), 900);
 const LEVELS = { kids: "Kids", facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
-const APP_VERSION = "61 (Hitster films & séries)";
+const APP_VERSION = "63 (Hitster films & séries)";
 function b64url(buf) {
   return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
@@ -1088,22 +1088,33 @@ let LOBBY = NET && NET.role === "host" ? LS.get("lobby", null) : null; // { devi
 // On se connecte aux DEUX relais en même temps : si l'un est bloqué ou en panne, l'autre prend le relais.
 let mqs = [], netOnline = false, joinTimer = null, lastStateTs = 0;
 const seenActs = new Map();
+// Fiabilité quand un téléphone est en veille : l'arbitre renvoie dans l'état la liste des actions reçues (acks),
+// et l'invité renvoie ses actions toutes les 2 s tant qu'elles n'y figurent pas.
+// Les actions sont numérotées (ep = session de la page, sq = numéro) pour être appliquées dans l'ordre d'envoi.
+const ACKS = [], pendingActs = new Map(), lastSeq = {}, actEp = randStr(6);
+let resendTimer = null, lastPub = 0, actSeq = 0;
 const myCid = (() => { let c = LS.get("cid", ""); if (!c) { c = randStr(12); LS.set("cid", c); } return c; })();
 const topicOf = t => `cinehits/v1/${NET.code}/${t}`;
 const isGuest = () => !!NET && NET.role === "guest";
 const isHost = () => !!NET && NET.role === "host";
+// LOBBY.devices : téléphone (cid) → numéro d'équipe. Plusieurs téléphones peuvent jouer pour la même équipe.
+// LOBBY.tnames : numéro d'équipe → nom choisi.
 function myTeam() {
   if (!NET) return null;
-  if (NET.role === "host") return 0;
   const t = LOBBY && LOBBY.devices ? LOBBY.devices[myCid] : undefined;
-  return t == null ? null : t;
+  if (t == null) return NET.role === "host" ? 0 : null;
+  return t;
 }
-const lobbyTeams = () => Object.entries((LOBBY || {}).devices || {})
-  .map(([cid, team]) => ({ team, me: cid === myCid, name: lobbyName(cid, team) })).sort((a, b) => a.team - b.team);
-const lobbyName = (cid, team) => cleanName(((LOBBY || {}).names || {})[cid]) || "Équipe " + (team + 1);
+const teamName = team => cleanName(((LOBBY || {}).tnames || {})[team]) || (G && G.players && G.players[team] ? G.players[team].name : "Équipe " + (team + 1));
+const lobbyName = (cid, team) => teamName(team);
+const devicesOf = team => Object.values((LOBBY || {}).devices || {}).filter(t => t === team).length;
+function lobbyTeams() {
+  const n = G && G.players ? G.players.length : Math.max(-1, ...Object.values((LOBBY || {}).devices || {})) + 1;
+  return Array.from({ length: n }, (_, team) => ({ team, me: team === myTeam(), name: teamName(team), count: devicesOf(team) }));
+}
 
 function netStop() {
-  clearInterval(joinTimer); joinTimer = null;
+  clearInterval(joinTimer); joinTimer = null; clearInterval(resendTimer); resendTimer = null;
   mqs.forEach(c => { try { c.end(true); } catch {} }); mqs = [];
 }
 function netStart() {
@@ -1121,7 +1132,7 @@ function netStart() {
     c.on("connect", () => {
       c.subscribe(topicOf(NET.role === "host" ? "act" : "state"), { qos: 1 });
       c.subscribe(topicOf("chat"), { qos: 1 });
-      if (NET.role === "host") publishState(); else sendAct({ t: "join" });
+      if (NET.role === "host") { holdSweep(3000); publishState(); } else { sendAct({ t: "join" }); flushPending(); }
       updateOnline();
     });
     c.on("close", updateOnline); c.on("offline", updateOnline); c.on("error", () => {});
@@ -1132,7 +1143,7 @@ function netStart() {
       if (!txt) { if (isGuest()) onState(null); return; }
       let m; try { m = JSON.parse(txt); } catch { return; }
       if (NET.role === "host") onAct(m);
-      else { if (m.ts && m.ts <= lastStateTs) return; if (m.ts) lastStateTs = m.ts; onState(m); }
+      else { if (Array.isArray(m.acks)) m.acks.forEach(id => pendingActs.delete(id)); if (m.ts && m.ts <= lastStateTs) return; if (m.ts) lastStateTs = m.ts; onState(m); }
     });
     mqs.push(c);
   }
@@ -1141,6 +1152,7 @@ function netStart() {
     if (!NET || !isGuest()) return netStop();
     if (myTeam() == null && !G) sendAct({ t: "join" });
   }, 3000);
+  if (isGuest()) resendTimer = setInterval(flushPending, 2000);
 }
 function updateOnline() {
   const on = mqs.some(c => c.connected);
@@ -1152,18 +1164,43 @@ function refreshNet() {
 }
 function publishState() {
   if (!isHost()) return;
-  const msg = JSON.stringify({ lobby: LOBBY, G, ts: Date.now() });
+  lastPub = Date.now();
+  const msg = JSON.stringify({ lobby: LOBBY, G, ts: lastPub, acks: ACKS });
   mqs.forEach(c => { if (c.connected) c.publish(topicOf("state"), msg, { qos: 1, retain: true }); });
 }
+function pushAct(msg) { mqs.forEach(c => { if (c.connected) c.publish(topicOf("act"), msg, { qos: 1 }); }); }
 function sendAct(a) {
   a.cid = myCid; a.id = a.id || randStr(10);
+  const keep = isGuest() && a.t !== "join" && a.t !== "leave";
+  if (keep && G && a.cc == null && a.t !== "name") { a.cc = G.card; a.at = Date.now() - clockOff; } // carte concernée + heure (horloge de l'arbitre)
+  if (keep) { a.ep = actEp; a.sq = ++actSeq; }
   const msg = JSON.stringify(a);
-  mqs.forEach(c => { if (c.connected) c.publish(topicOf("act"), msg, { qos: 1 }); });
+  if (keep) pendingActs.set(a.id, msg);
+  pushAct(msg);
 }
-// Quand le téléphone se rallume ou revient sur l'onglet, on se reconnecte tout de suite
+// Renvoie les actions pas encore confirmées par l'arbitre (il était peut-être en veille)
+function flushPending() {
+  if (!NET || !isGuest()) return;
+  for (const msg of pendingActs.values()) pushAct(msg);
+}
+// Réveil du téléphone (écran déverrouillé, retour sur l'onglet) : la connexion peut être « morte » sans le savoir,
+// on la refait tout de suite. L'arbitre laisse aussi quelques secondes aux actions envoyées pendant sa veille.
+let hiddenAt = 0, lastWake = 0, lastTick = Date.now();
+function onWake() {
+  if (!NET || Date.now() - lastWake < 1500) return;
+  lastWake = Date.now();
+  if (isHost()) holdSweep(8000);
+  netStart();
+}
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && NET && !mqs.some(c => c.connected)) netStart();
+  if (document.visibilityState === "hidden") { hiddenAt = Date.now(); return; }
+  if (NET && (!mqs.some(c => c.connected) || Date.now() - hiddenAt > 2000)) onWake();
 });
+setInterval(() => {
+  const n = Date.now();
+  if (n - lastTick > 5000 && document.visibilityState === "visible") onWake();
+  lastTick = n;
+}, 1000);
 function createMulti(opts) {
   netStop();
   NET = { code: String(Math.floor(10000 + Math.random() * 90000)), role: "host" };
@@ -1173,7 +1210,7 @@ function createMulti(opts) {
 }
 function joinMulti(code) {
   netStop();
-  NET = { code, role: "guest" }; LOBBY = null; G = null; LS.set("net", NET);
+  NET = { code, role: "guest" }; LOBBY = null; G = null; LS.set("net", NET); pendingActs.clear();
   go("lobby"); netStart();
   setTimeout(() => {
     if (!NET || NET.code !== code || LOBBY) return;
@@ -1191,58 +1228,97 @@ function leaveMulti(msg) {
     setTimeout(() => old.forEach(c => { try { c.end(true); } catch {} }), 600);
   }
   pause(); closeSheet();
-  NET = null; LOBBY = null; netOnline = false; LS.del("net"); LS.del("lobby");
+  NET = null; LOBBY = null; netOnline = false; pendingActs.clear(); LS.del("net"); LS.del("lobby");
   G = LS.get("game", null); if (G && G.multi) { G = null; LS.del("game"); }
   pickTeam = null; if (msg) toast(msg, 4000);
   go("home");
 }
+// Équipes numérotées 0, 1, 2… sans trou (une équipe vidée de ses téléphones disparaît, son nom aussi)
 function renumberLobby() {
-  const list = Object.entries(LOBBY.devices).sort((a, b) => a[1] - b[1]);
-  list.forEach(([cid], i) => { LOBBY.devices[cid] = i; });
+  const used = [...new Set(Object.values(LOBBY.devices))].sort((a, b) => a - b), map = {}, tn = {};
+  used.forEach((t, i) => { map[t] = i; if (LOBBY.tnames && LOBBY.tnames[t]) tn[i] = LOBBY.tnames[t]; });
+  for (const cid in LOBBY.devices) LOBBY.devices[cid] = map[LOBBY.devices[cid]];
+  LOBBY.tnames = tn;
+}
+// Changer d'équipe : rejoindre une équipe existante, ou « new » pour créer la sienne (seulement avant le lancement)
+function setTeam(cid, t) {
+  if (G) {
+    if (!(Number.isInteger(t) && t >= 0 && t < G.players.length)) return false;
+    LOBBY.devices[cid] = t; return true;
+  }
+  const teams = new Set(Object.values(LOBBY.devices)), cur = LOBBY.devices[cid];
+  if (t === "new") {
+    if (cur != null && devicesOf(cur) === 1) return false; // déjà seul dans son équipe
+    if (teams.size >= 8) return false;
+    t = Math.max(-1, ...teams) + 1;
+  } else if (!teams.has(t)) return false;
+  LOBBY.devices[cid] = t; renumberLobby(); return true;
+}
+function chooseTeam(t) {
+  if (isHost()) { if (setTeam(myCid, t)) { LS.set("lobby", LOBBY); publishState(); render(); } }
+  else sendAct({ t: "team", team: t });
 }
 function onAct(a) {
   if (!a || !a.cid) return;
+  // Action arrivée avant une précédente du même téléphone (renvoi après une veille) : on attend la précédente
+  if (a.sq) {
+    const l = lastSeq[a.cid];
+    if (l && l.ep === a.ep && a.sq > l.sq + 1 && !seenActs.has(a.id)) return;
+    if (!l || l.ep !== a.ep || a.sq > l.sq) lastSeq[a.cid] = { ep: a.ep, sq: a.sq };
+  }
   if (a.id) {
-    if (seenActs.has(a.id)) return;
+    if (!ACKS.includes(a.id)) { ACKS.push(a.id); if (ACKS.length > 80) ACKS.shift(); }
+    // Déjà traitée : c'est un renvoi, l'invité n'a pas vu l'accusé de réception → on republie l'état
+    if (seenActs.has(a.id)) { if (Date.now() - lastPub > 1500) publishState(); return; }
     seenActs.set(a.id, Date.now());
     if (seenActs.size > 300) for (const [k] of seenActs) { seenActs.delete(k); if (seenActs.size <= 200) break; }
   }
   if (a.t === "join") {
+    // Avant le lancement, chaque nouveau téléphone crée sa propre équipe (il pourra ensuite en rejoindre une autre).
+    // Partie en cours : il choisira une équipe existante.
     if (LOBBY.devices[a.cid] == null && !G) {
-      const n = Object.keys(LOBBY.devices).length;
-      if (n < 8) LOBBY.devices[a.cid] = n;
+      const teams = new Set(Object.values(LOBBY.devices));
+      LOBBY.devices[a.cid] = teams.size < 8 ? Math.max(-1, ...teams) + 1 : 0;
     }
     LS.set("lobby", LOBBY); publishState(); if (screen === "lobby") render();
     return;
   }
   if (a.t === "name") {
-    LOBBY.names = LOBBY.names || {}; LOBBY.names[a.cid] = cleanName(a.name);
+    const t = LOBBY.devices[a.cid];
+    if (t != null && !G) { LOBBY.tnames = LOBBY.tnames || {}; LOBBY.tnames[t] = cleanName(a.name); }
+    LS.set("lobby", LOBBY); publishState(); if (screen === "lobby") render();
+    return;
+  }
+  if (a.t === "team") {
+    setTeam(a.cid, a.team === "new" ? "new" : +a.team);
     LS.set("lobby", LOBBY); publishState(); if (screen === "lobby") render();
     return;
   }
   if (a.t === "leave") {
-    if (!G && LOBBY.devices[a.cid] != null && a.cid !== myCid) { delete LOBBY.devices[a.cid]; renumberLobby(); }
+    if (LOBBY.devices[a.cid] != null && a.cid !== myCid) { delete LOBBY.devices[a.cid]; if (!G) renumberLobby(); }
     LS.set("lobby", LOBBY); publishState(); if (screen === "lobby") render();
     return;
   }
   const by = LOBBY.devices[a.cid];
-  if (by == null || !G) return;
-  a.by = by;
+  if (by == null || !G) return publishState();
+  // Action renvoyée après coup mais qui concernait une carte précédente : on l'ignore
+  if (a.cc != null && a.cc !== G.card && a.t !== "end") return publishState();
+  a.by = by; a.fromHost = false;
   const prev = JSON.parse(JSON.stringify(G));
-  if (applyAction(a)) afterChange(prev);
+  if (applyAction(a)) afterChange(prev); else publishState();
 }
 function onState(m) {
   if (!m || !m.lobby) { if (LOBBY) leaveMulti("La partie a été terminée par son créateur."); return; }
   const prev = G;
   LOBBY = m.lobby; G = m.G; if (m.ts) clockOff = Date.now() - m.ts;
   if (!G) { pickTeam = null; if (screen !== "lobby") screen = "lobby"; render(); return; }
-  if (myTeam() == null) { leaveMulti("Cette partie a déjà commencé sans toi."); return; }
   if (G.ended) { leaveMulti("Le créateur a terminé la partie."); return; }
+  if (myTeam() == null) { pickTeam = null; pause(); if (screen !== "lobby") screen = "lobby"; render(); return; } // partie en cours : choisir son équipe
   postState(prev);
 }
 function startMulti() {
-  const o = LOBBY.opts, n = Object.keys(LOBBY.devices).length, names = [];
-  Object.entries(LOBBY.devices).forEach(([cid, team]) => { names[team] = lobbyName(cid, team); });
+  renumberLobby();
+  const o = LOBBY.opts, teams = lobbyTeams(), n = teams.length, names = teams.map(t => t.name);
   newGame(n, o.target, o.yMin, o.yMax, o.level, o.tokens, names);
   G.multi = true; G.remote = !!o.remote; G.playSeq = 0;
   const prev = null; afterChange(prev);
@@ -1332,7 +1408,7 @@ function bindJoin() {
   $("#join").onclick = () => joinMulti(inp.value);
 }
 function viewLobby() {
-  const host = isHost(), teams = lobbyTeams(), me = myTeam();
+  const host = isHost(), teams = lobbyTeams(), me = myTeam(), started = !!G && !host && me == null;
   return `<div class="screen prep">
     <div class="top"><h2>${host ? "Partie à plusieurs" : "Salle d'attente"}</h2><button class="iconbtn" id="back" aria-label="Fermer">${ic("x", "solo")}</button></div>
     <div class="content">
@@ -1341,28 +1417,33 @@ function viewLobby() {
         <div class="bigcode">${esc(NET ? NET.code : "")}</div>
         ${host ? `<div class="muted">Les autres équipes ouvrent le jeu → <b>Rejoindre une partie</b> → saisissent ce code.</div>` : ""}
       </div>
-      ${me != null ? `<label>Nom de ton équipe</label>
-        ${nameField(`id="myname" maxlength="18" placeholder="Équipe ${me + 1}" value="${esc(((LOBBY || {}).names || {})[myCid] || "")}"`)}`
+      ${started ? `<p style="text-align:center;font-size:17px">La partie a déjà commencé : choisis ton équipe.</p>`
+        : me != null ? `<label>Nom de ton équipe</label>
+        ${nameField(`id="myname" maxlength="18" placeholder="Équipe ${me + 1}" value="${esc(((LOBBY || {}).tnames || {})[me] || "")}"`)}`
         : `<p style="text-align:center;font-size:17px">${LOBBY ? "Connexion à la partie…" : "Recherche de la partie…"}</p>`}
-      ${host ? `<label class="switch"><input type="checkbox" id="remote" ${LOBBY.opts.remote ? "checked" : ""}><span class="sl"></span>
+      ${started ? "" : host ? `<label class="switch"><input type="checkbox" id="remote" ${LOBBY.opts.remote ? "checked" : ""}><span class="sl"></span>
           <span><b>On joue à distance</b><br><span class="muted">${LOBBY.opts.remote ? "La musique est diffusée sur tous les téléphones." : "Tous dans la même pièce : seul le téléphone de l'équipe en jeu diffuse la musique."}</span></span></label>`
-        : LOBBY ? `<p class="muted" style="text-align:center">${LOBBY.opts && LOBBY.opts.remote ? "Partie à distance : la musique sera diffusée sur ton téléphone." : "Partie en présence : la musique sort du téléphone de l'équipe en jeu."}</p>` : ""}
-      <label>Équipes connectées (${teams.length})</label>
-      ${teams.map(t => `<div class="score"><b>${esc(t.name)}</b><span class="muted">${t.me ? "ce téléphone" : t.team === 0 ? "créateur" : ic("check") + "connectée"}</span></div>`).join("") || `<p class="muted">—</p>`}
+        : LOBBY && LOBBY.opts ? `<p class="muted" style="text-align:center">${LOBBY.opts && LOBBY.opts.remote ? "Partie à distance : la musique sera diffusée sur ton téléphone." : "Partie en présence : la musique sort du téléphone de l'équipe en jeu."}</p>` : ""}
+      <label>Équipes (${teams.length})</label>
+      ${teams.map(t => `<div class="score" style="align-items:center;gap:10px"><span><b>${esc(t.name)}</b><br><span class="muted">${t.me ? (t.count > 1 ? `ton équipe · ${t.count} téléphones` : "ton équipe") : t.count > 1 ? `${t.count} téléphones` : t.count ? "1 téléphone" : "aucun téléphone"}</span></span>
+        ${t.me || me == null && !started || !LOBBY ? "" : `<button class="btn small sec" data-team="${t.team}">Rejoindre</button>`}</div>`).join("") || `<p class="muted">—</p>`}
+      ${!started && me != null && devicesOf(me) > 1 && teams.length < 8 ? `<button class="btn sec" id="newteam">Créer ma propre équipe</button>` : ""}
       <p class="muted" style="margin-top:12px"><span class="netdot ${netOnline ? "on" : ""}"></span> ${netOnline ? "Connecté au relais" : "Connexion au relais…"}</p>
     </div>
     <div class="footer">${host
       ? `<button class="btn" id="go" ${teams.length < 2 ? "disabled" : ""}>${teams.length < 2 ? "En attente d'une autre équipe…" : `Lancer la partie (${teams.length} équipes)`}</button>`
-      : `<button class="btn sec" disabled>En attente du lancement…</button>`}</div>
+      : started ? "" : `<button class="btn sec" disabled>En attente du lancement…</button>`}</div>
   </div>`;
 }
 function bindLobby() {
   $("#back").onclick = () => { if (confirm(isHost() ? "Annuler cette partie pour tout le monde ?" : "Quitter la salle d'attente ?")) leaveMulti(); };
   $("#go") && ($("#go").onclick = startMulti);
+  document.querySelectorAll("[data-team]").forEach(b => b.onclick = () => { b.disabled = true; chooseTeam(+b.dataset.team); });
+  $("#newteam") && ($("#newteam").onclick = e => { e.target.disabled = true; chooseTeam("new"); });
   let nameTimer;
   const sendName = v => {
     clearTimeout(nameTimer);
-    if (isHost()) { LOBBY.names = LOBBY.names || {}; LOBBY.names[myCid] = cleanName(v); LS.set("lobby", LOBBY); publishState(); }
+    if (isHost()) { const t = myTeam(); LOBBY.tnames = LOBBY.tnames || {}; LOBBY.tnames[t] = cleanName(v); LS.set("lobby", LOBBY); publishState(); }
     else sendAct({ t: "name", name: v });
   };
   if ($("#myname")) {
@@ -1376,10 +1457,10 @@ function bindLobby() {
 /* ================= Actions de jeu (identiques en local et à plusieurs) ================= */
 let pickTeam = null, pickGap = null;
 /* ---------- Minuteur de vote (parties à plusieurs téléphones) ---------- */
-const VOTE_MS = 10000;
+const VOTE_MS = 20000;
 let clockOff = 0, voteTimerLocal = null, voteTimerHost = null;
 // Les équipes adverses votent chacune à leur tour, dans l'ordre qui suit l'équipe du tour.
-// L'équipe qui a la main (G.voteCur) a 10 s, ou 20 s si elle a touché « Voter » ; son délai part de G.voteStart.
+// L'équipe qui a la main (G.voteCur) a 20 s, ou 40 s si elle a touché « Voter » ; son délai part de G.voteStart.
 const teamDeadline = i => G.voteStart + VOTE_MS * (G.voteExt && G.voteExt[i] ? 2 : 1);
 const seqVote = () => !!G && !!G.multi && Array.isArray(G.voteOrder);
 const voteOpenFor = i => !G.voteClosed && (seqVote() ? G.voteCur === i : !(G.closedTeams || []).includes(i));
@@ -1413,9 +1494,14 @@ function startVotes() {
   } else { G.voteStart = Date.now(); G.voteOrder = undefined; G.voteCur = null; }
 }
 // L'arbitre fait passer l'équipe qui a la main quand son délai est dépassé (1,5 s de marge réseau)
+let sweepHold = 0;
+function holdSweep(ms) { sweepHold = Math.max(sweepHold, Date.now() + ms); }
 function hostSweep() {
   if (!G || !G.multi || G.phase !== "vote" || !G.voteStart || G.voteClosed) return;
   const now = Date.now();
+  // Minuteur déclenché au réveil du téléphone : on attend d'abord les votes envoyés pendant la veille
+  if (now - lastTick > 3000) holdSweep(8000);
+  if (now < sweepHold) { clearTimeout(voteTimerHost); voteTimerHost = setTimeout(hostSweep, sweepHold - now + 30); return; }
   if (!seqVote() || G.voteCur == null) { // partie commencée avec une ancienne version : on bascule sur les votes à tour de rôle
     const prev = JSON.parse(JSON.stringify(G));
     G.voteOrder = G.players.map((_, k) => (G.turn + 1 + k) % G.players.length).filter(i => i !== G.turn);
@@ -1437,7 +1523,7 @@ function armVoteTimer() {
   voteTimerLocal = setTimeout(() => {
     if (!G || G.phase !== "vote" || iDecided()) return;
     if (pickTeam != null && pickGap != null) dispatch({ t: "vote", team: pickTeam, gap: pickGap });
-    else dispatch({ t: "pass" });
+    else if (devicesOf(myTeam()) <= 1) dispatch({ t: "pass" });
     pickTeam = null; pickGap = null; if (isGuest()) render();
   }, Math.max(0, left));
 }
@@ -1471,7 +1557,7 @@ const activeHere = () => !!G && (!G.multi || myTeam() === G.turn);
 function dispatch(a) {
   if (!G) return;
   if (isGuest()) { sendAct(a); return; }
-  a.by = myTeam();
+  a.by = myTeam(); a.fromHost = true; a.cid = myCid;
   const prev = JSON.parse(JSON.stringify(G));
   if (applyAction(a)) afterChange(prev);
 }
@@ -1509,7 +1595,7 @@ function postState(prev) {
   if (["home", "lobby", "join", "setup"].includes(screen)) screen = "game";
   render();
   if (newCard && wantPlayNext) { wantPlayNext = false; if (activeHere()) playCurrent(); }
-  if (G.multi && G.remote && !activeHere()) {
+  if (G.multi && G.remote && (G.playBy ? G.playBy !== myCid : !activeHere())) {
     if (!prev || lastPlaySeq == null) lastPlaySeq = G.playSeq;
     else if (G.playSeq !== lastPlaySeq) { lastPlaySeq = G.playSeq; if (G.phase === "listen") playCurrent(); }
   } else lastPlaySeq = G.playSeq;
@@ -1526,9 +1612,9 @@ function applyAction(a) {
   ensureG();
   const multi = !!G.multi, active = !multi || a.by === G.turn;
   switch (a.t) {
-    case "play": if (!active || G.phase !== "ready") return false; rememberPlayed(G.card, G.level); G.phase = "listen"; G.playSeq = (G.playSeq || 0) + 1; return true;
-    case "replay": if (!active || !["listen", "vote"].includes(G.phase)) return false; G.playSeq = (G.playSeq || 0) + 1; return true;
-    case "redraw": if (!active) return false; drawCard(); G.phase = "listen"; G.playSeq = (G.playSeq || 0) + 1; return true;
+    case "play": if (!active || G.phase !== "ready") return false; rememberPlayed(G.card, G.level); G.phase = "listen"; G.playBy = a.cid || null; G.playSeq = (G.playSeq || 0) + 1; return true;
+    case "replay": if (!active || !["listen", "vote"].includes(G.phase)) return false; G.playBy = a.cid || null; G.playSeq = (G.playSeq || 0) + 1; return true;
+    case "redraw": if (!active) return false; drawCard(); G.phase = "listen"; G.playBy = a.cid || null; G.playSeq = (G.playSeq || 0) + 1; return true;
     case "gap": if (!active || G.phase !== "listen") return false; G.gap = a.i; return true;
     case "answer": {
       // Valide la réponse : la période (a.gap) et le film / compositeur arrivent ensemble.
@@ -1548,7 +1634,8 @@ function applyAction(a) {
     }
     case "votepick": {
       if (!multi || G.phase !== "vote" || a.by == null || a.by === G.turn || !G.voteStart || !voteOpenFor(a.by)) return false;
-      if (Date.now() > G.voteStart + VOTE_MS + 1500) return false;
+      const at = a.at ? Math.min(+a.at, Date.now()) : Date.now(); // heure d'envoi (l'arbitre a pu la recevoir en retard)
+      if (at > G.voteStart + VOTE_MS + 1500) return false;
       G.voteExt = G.voteExt || {}; if (G.voteExt[a.by]) return false;
       G.voteExt[a.by] = true; return true;
     }
@@ -1603,7 +1690,7 @@ function applyAction(a) {
       G.turn = (G.turn + 1) % G.players.length;
       drawCard(); return true;
     }
-    case "end": if (multi && a.by !== 0) return false; G.ended = true; return true;
+    case "end": if (multi && !a.fromHost) return false; G.ended = true; return true;
     case "uri": if (a.card !== G.card || !a.uri || G.curUri === a.uri) return false; G.curUri = a.uri; return true;
   }
   return false;
@@ -1949,7 +2036,7 @@ function bindGame() {
   $("#vote") && ($("#vote").onclick = () => {
     if (G.multi) {
       const left0 = voteLeft(); pickTeam = myTeam(); pickGap = null;
-      pickDur = Math.max(1000, (left0 || 0) + VOTE_MS); // 10 s de plus pour choisir sa case
+      pickDur = Math.max(1000, (left0 || 0) + VOTE_MS); // 20 s de plus pour choisir sa case
       dispatch({ t: "votepick" }); armVoteTimer(); render(); return;
     }
     const free = 1 + G.chals.length < cur().cards.length + 1;
